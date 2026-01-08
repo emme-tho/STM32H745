@@ -1,0 +1,28 @@
+# ===== Build output =====
+Debug/
+Release/
+build/
+out/
+*.o
+*.a
+*.elf
+*.map
+*.list
+*.d
+*.su
+*.hex
+*.bin
+
+# ===== CubeIDE / Eclipse =====
+.metadata/
+.settings/
+*.launch
+
+# ===== OS / Editor =====
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# ===== CubeMX backups =====
+*.ioc.bak
