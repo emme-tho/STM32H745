@@ -116,6 +116,7 @@ static void ws_reset(void)
     ws_nib_len = 0;
     ws_tx_len = 0;
     ws_seg_idx = 0;
+
     memset(ws_nibbles, 0, sizeof(ws_nibbles));
 }
 
@@ -543,18 +544,24 @@ uint8_t I2C_Mode_HandleChar(char ch)
         }
 
         // Start write stream
-        if (ch == 'w' || ch == 'W') {
-            ws_active  = 1;
-            ws_nib_len = 0;
-            ws_tx_len  = 0;
-            ws_seg_idx = 0;
-            ws_have_addr = 0;
-            ws_addr7 = 0;
+         if (ch == 'w' || ch == 'W') {
+        	 ws_active  = 1;
+        	 ws_nib_len = 0;
+        	 ws_tx_len  = 0;
+        	 ws_seg_idx = 0;
+        	 ws_have_addr = 0;
+        	 ws_addr7 = 0;
 
-            cli_printf("\r\nwrite: ");
-            return 1;
-        }
-        return 0;
+        	 rs_active = 0;
+             rs_nib_len = 0;
+             rs_len_set = 0;
+             rs_len = 0;
+             memset(rs_nibbles, 0, sizeof(rs_nibbles));
+
+             cli_printf("\r\nwrite: ");
+             return 1;
+         }
+         return 0;
     }
 
     // write active: x soll global wirken -> abbrechen, NICHT konsumieren
@@ -562,6 +569,76 @@ uint8_t I2C_Mode_HandleChar(char ch)
         ws_reset();
         cli_printf("\r\n(write aborted)\r\n");
         return 0;
+    }
+
+
+    // ------------------------------------------------------------
+    // READ-MODE (nach 'r'): hier sammeln wir nur noch LEN / Format
+    // ------------------------------------------------------------
+    if (rs_active) {
+        // Shortcuts: rb/rw/rh (nur wenn noch keine Hex-Ziffern gesammelt wurden)
+        if (!rs_len_set && rs_nib_len == 0) {
+            if (ch == 'b' || ch == 'B') {
+                rs_len = 1;
+                rs_len_set = 1;
+                (void)CDC_Transmit_HS((uint8_t*)&ch, 1);
+                return 1;
+            }
+            if (ch == 'w' || ch == 'W') {
+                rs_len = 2;
+                rs_len_set = 1;
+                (void)CDC_Transmit_HS((uint8_t*)&ch, 1);
+                return 1;
+            }
+            if (ch == 'h' || ch == 'H') {
+                rs_len = 4;
+                rs_len_set = 1;
+                (void)CDC_Transmit_HS((uint8_t*)&ch, 1);
+                return 1;
+            }
+        }
+
+        // LEN als Hex (1..4 Nibbles)
+        if (hex_nibble(ch) >= 0) {
+            if (rs_nib_len < (uint8_t)sizeof(rs_nibbles)) {
+                rs_nibbles[rs_nib_len++] = ch;
+                (void)CDC_Transmit_HS((uint8_t*)&ch, 1);
+            }
+            return 1;
+        }
+
+        // 'p' wird unten finalisiert
+        // alles andere ignorieren
+    }
+
+    // ------------------------------------------------------------
+    // 'r' startet Read: wir finalisieren bis dahin die aktuellen Nibbles
+    // ------------------------------------------------------------
+    if (!rs_active && (ch == 'r' || ch == 'R')) {
+        uint16_t new_start = 0, new_len = 0;
+        HAL_StatusTypeDef fst = ws_finalize_segment_and_append(&new_start, &new_len);
+        (void)new_start; (void)new_len;
+
+        if (fst != HAL_OK) {
+            cli_printf("\r\nwrite: FEHLER (addr>0x7F oder hex/len)\r\n");
+            ws_reset();
+            return 1;
+        }
+
+        if (!ws_have_addr) {
+            cli_printf("\r\nread: FEHLER (addr missing)\r\n");
+            ws_reset();
+            return 1;
+        }
+
+        rs_active = 1;
+        rs_nib_len = 0;
+        rs_len_set = 0;
+        rs_len = 0;
+        memset(rs_nibbles, 0, sizeof(rs_nibbles));
+
+        (void)CDC_Transmit_HS((uint8_t*)&ch, 1); // echo 'r'
+        return 1;
     }
 
     // hex nibble
@@ -573,8 +650,19 @@ uint8_t I2C_Mode_HandleChar(char ch)
         return 1;
     }
 
-    // z = Segment Ende (no-stop marker)
-    if (ch == 'z' || ch == 'Z') {
+    // ------------------------------------------------------------
+    // Normaler Hex-Daten-Stream (nur wenn NICHT im read-mode)
+    // ------------------------------------------------------------
+    if (!rs_active && (hex_nibble(ch) >= 0)) {
+        if (ws_nib_len < (uint16_t)(sizeof(ws_nibbles) - 1u)) {
+            ws_nibbles[ws_nib_len++] = ch;
+            (void)CDC_Transmit_HS((uint8_t*)&ch, 1); // echo raw
+        }
+        return 1;
+    }
+
+    // z = Segment Ende (no-stop marker)  (nur wenn NICHT im read-mode)
+    if (!rs_active && (ch == 'z' || ch == 'Z')) {
         uint16_t new_start = 0, new_len = 0;
         HAL_StatusTypeDef fst = ws_finalize_segment_and_append(&new_start, &new_len);
         if (fst != HAL_OK) {
@@ -601,8 +689,92 @@ uint8_t I2C_Mode_HandleChar(char ch)
         return 1;
     }
 
-    // p = final (stop + send)
+
+    // ------------------------------------------------------------
+    // p = final (stop + send)  oder final read
+    // ------------------------------------------------------------
     if (ch == 'p' || ch == 'P') {
+        if (rs_active) {
+            // READ finalisieren
+            uint16_t len = 0;
+            if (rs_parse_len(&len) != HAL_OK) {
+                cli_printf("\r\nread: FEHLER (len missing/hex)\r\n");
+                ws_reset();
+                return 1;
+            }
+            if (len == 0 || len > sizeof(ws_rx)) {
+                cli_printf("\r\nread: FEHLER (len 1..%u)\r\n", (unsigned)sizeof(ws_rx));
+                ws_reset();
+                return 1;
+            }
+
+            cli_printf("\r\nread(final): addr7=0x%02X (bus=0x%02X) prewrite=",
+                       ws_addr7, (uint8_t)(ws_addr7 << 1));
+            print_bytes(ws_tx, ws_tx_len);
+            cli_printf("  len=%u\r\n", (unsigned)len);
+
+            HAL_StatusTypeDef st = HAL_ERROR;
+
+            if (ws_tx_len == 0) {
+                // Direktes Lesen ohne Register-Pointer
+                st = HAL_I2C_Master_Receive(
+                        &hi2c1,
+                        (uint16_t)(ws_addr7 << 1),
+                        ws_rx,
+                        (uint16_t)len,
+                        I2C_TX_TIMEOUT_MS
+                );
+            } else if (ws_tx_len == 1) {
+                uint16_t mem = ws_tx[0];
+                st = HAL_I2C_Mem_Read(
+                        &hi2c1,
+                        (uint16_t)(ws_addr7 << 1),
+                        mem,
+                        I2C_MEMADD_SIZE_8BIT,
+                        ws_rx,
+                        (uint16_t)len,
+                        I2C_TX_TIMEOUT_MS
+                );
+            } else if (ws_tx_len == 2) {
+                uint16_t mem = (uint16_t)((ws_tx[0] << 8) | ws_tx[1]);
+                st = HAL_I2C_Mem_Read(
+                        &hi2c1,
+                        (uint16_t)(ws_addr7 << 1),
+                        mem,
+                        I2C_MEMADD_SIZE_16BIT,
+                        ws_rx,
+                        (uint16_t)len,
+                        I2C_TX_TIMEOUT_MS
+                );
+            } else {
+                cli_printf("read: FEHLER (prewrite len=%u nicht unterstuetzt, nur 0/1/2)\r\n",
+                           (unsigned)ws_tx_len);
+                ws_reset();
+                return 1;
+            }
+
+            uint32_t err   = HAL_I2C_GetError(&hi2c1);
+            uint32_t state = HAL_I2C_GetState(&hi2c1);
+
+            if (st == HAL_OK) {
+                cli_printf("I2C RX OK: ");
+                print_bytes(ws_rx, (uint16_t)len);
+                cli_printf("\r\n");
+            } else {
+                cli_printf("I2C RX FEHLER: st=%lu, err=0x%08lX, state=%lu\r\n",
+                           (unsigned long)st,
+                           (unsigned long)err,
+                           (unsigned long)state);
+            }
+
+            // ErrorCode löschen, damit der nächste Versuch sauber ist
+            hi2c1.ErrorCode = HAL_I2C_ERROR_NONE;
+
+            ws_reset();
+            return 1;
+        }
+
+        // WRITE finalisieren
         uint16_t new_start = 0, new_len = 0;
         (void)new_start;
         (void)new_len;
@@ -644,6 +816,9 @@ uint8_t I2C_Mode_HandleChar(char ch)
                        (unsigned long)err,
                        (unsigned long)state);
         }
+
+        // ErrorCode löschen, damit der nächste Versuch sauber ist
+        hi2c1.ErrorCode = HAL_I2C_ERROR_NONE;
 
         ws_reset();
         return 1;
