@@ -73,7 +73,6 @@ static char     rs_nibbles[4];
 static uint8_t  rs_nib_len    = 0;
 static uint8_t  rs_len_set    = 0;
 static uint16_t rs_len        = 0;
-
 static uint8_t  ws_rx[256];
 
 

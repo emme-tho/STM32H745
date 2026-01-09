@@ -104,4 +104,15 @@ HAL_StatusTypeDef PMIC_Buck1_Set_mV(uint16_t mv, uint16_t *applied_mv);
 HAL_StatusTypeDef PMIC_Buck1_Set_500mV(void);
 HAL_StatusTypeDef PMIC_Buck1_Set_1000mV(void);
 
+
+HAL_StatusTypeDef PMIC_ApplyRail_mV(
+    const char *rail,
+    uint16_t mv,
+    uint16_t min_mv,
+    uint16_t max_mv,
+    uint16_t *applied_mv
+);
+
+HAL_StatusTypeDef PMIC_DisableRail(const char *rail);
+
 #endif /* INC_PMIC_H_ */

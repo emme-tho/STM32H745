@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "i2c_mode.h"   // jetzt nur I2C, Rest später
-
+#include "dio_mode.h"   // DIOs
 static ubt_mode_t g_mode = MODE_NONE;
 
 ubt_mode_t MODES_GetMode(void) { return g_mode; }
@@ -107,7 +107,7 @@ uint8_t MODES_HandleMenuChar(char ch)
         case 'D':
             g_mode = MODE_DIO;
             CLI_SetPrompt("DIO> ");
-            cli_printf("\r\nDIO Mode folgt.\r\n");
+            DIO_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
 
@@ -132,6 +132,8 @@ uint8_t MODES_HandleLine(char *line)
     switch (g_mode)
     {
         case MODE_I2C:  return I2C_Mode_HandleLine(line);
+        case MODE_DIO:  return DIO_Mode_HandleLine(line);
+
         default:        return 0;
     }
 }
@@ -142,6 +144,8 @@ uint8_t MODES_HandleChar(char ch)
     {
         case MODE_I2C:
             return I2C_Mode_HandleChar(ch);
+        case MODE_DIO:
+        	return DIO_Mode_HandleChar(ch);
         default:
             return 0;
     }

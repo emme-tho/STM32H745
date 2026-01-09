@@ -420,3 +420,12 @@ HAL_StatusTypeDef PMIC_Buck1_Set_1000mV(void)
     uint16_t dummy = 0;
     return PMIC_Buck1_Set_mV(1000u, &dummy);
 }
+
+
+HAL_StatusTypeDef PMIC_DisableRail(const char *rail)
+{
+    if (!rail) return HAL_ERROR;
+    return PMIC_SetRailEnable(rail, 0u);
+}
+
+
