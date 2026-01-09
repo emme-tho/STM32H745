@@ -6,16 +6,11 @@
 
 HAL_StatusTypeDef setup_set_voltage(
     const char *rail,
-    uint16_t mv,
-    uint16_t min_mv,
-    uint16_t max_mv,
-    const char *label,        // z.B. "LDO1", "BUCK3"
-    uint16_t *applied_out     // optional, kann NULL sein
+    uint16_t mv
 );
 
 HAL_StatusTypeDef setup_disable_rail(
-    const char *rail,
-    const char *label
+    const char *rail
 );
 
 #endif /* SETUP_UTILS_H_ */

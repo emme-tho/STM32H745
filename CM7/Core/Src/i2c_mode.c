@@ -2,6 +2,7 @@
 #include "cli.h"
 #include "pmic.h"
 #include "usbd_cdc_if.h"   // CDC_Transmit_HS
+#include "setup_utils.h"
 
 #include "stm32h7xx_hal.h"
 #include <string.h>
@@ -75,6 +76,7 @@ static uint8_t  rs_len_set    = 0;
 static uint16_t rs_len        = 0;
 static uint8_t  ws_rx[256];
 
+static const char* voltage_i2c = "ldo1";
 
 // ---------------- Setup menu state ----------------
 typedef enum {
@@ -289,29 +291,7 @@ static void i2c_setup_show_clock(void)
     cli_printf("\r\nAuswahl: ");
 }
 
-static void i2c_setup_set_voltage(uint16_t mv)
-{
-    if (mv < 500u || mv > 3300u) {
-        cli_printf("\r\nBereich: 500..3300 mV\r\n");
-        return;
-    }
 
-    uint16_t applied = 0;
-    if (PMIC_SetRail_mV("ldo1", (uint16_t)mv, &applied) != HAL_OK) {
-        cli_printf("\r\nLDO1 set %umV FEHLER\r\n", (unsigned)mv);
-        return;
-    }
-    if (PMIC_SetRailEnable("ldo1", 1u) != HAL_OK) {
-        cli_printf("\r\nLDO1 enable FEHLER\r\n");
-        return;
-    }
-
-    g_ldo1_mv = applied;
-    g_ldo1_en = 1u;
-
-    cli_printf("\r\nLDO1: request %umV -> applied %umV, EN=1\r\n",
-               (unsigned)mv, (unsigned)applied);
-}
 
 static void i2c_reinit_with_timing(uint32_t timing, uint32_t khz)
 {
@@ -409,7 +389,7 @@ static void i2c_print_help(void)
     cli_printf("  w..r..p     - Read Stream : w(ADDR7)(REG..)(rLEN|rb|rw|rh)p\r\n");
     cli_printf("               Beispiel: w3c57r01p (read 1 byte ab reg 0x57)\r\n");
     cli_printf("               ADDR7 muss 0x00..0x7F sein (z.B. w50AABBp)\r\n");
-    cli_printf("  help\r\n");
+    cli_printf("  ?  	      - diese Hilfe\r\n");
 }
 
 
@@ -417,13 +397,7 @@ static void i2c_print_help(void)
 void I2C_Mode_Enter(void)
 {
     ws_reset();
-
-    cli_printf("\r\n[I2C Mode]\r\n");
-    cli_printf("  v <mv>      - I2C1 Pegel via LDO1 setzen (mV) + enable\r\n");
-    cli_printf("  s           - I2C scan (i2cdetect-style)\r\n");
-    cli_printf("  w..z..p     - Write Stream: w(ADDR7)(DATA..)(zDATA..)*p\r\n");
-    cli_printf("  w..r..p     - Read Stream : w(ADDR7)(REG..)(rLEN|rb|rw|rh)p\r\n");
-    cli_printf("  help        - diese Hilfe\r\n");
+    i2c_print_help();
 }
 
 uint8_t I2C_Mode_HandleLine(char *line)
@@ -435,23 +409,22 @@ uint8_t I2C_Mode_HandleLine(char *line)
     char *cmd = strtok(line, " \t");
     if (!cmd) return 1;
 
-    if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
-        i2c_print_help();
-        return 1;
-    }
-
     // Setup menu auch als Line-Command: 's'
     if (strcmp(cmd, "s") == 0) {
         i2c_setup_show_main();
         return 1;
     }
+
+
     // Scan als Line-Command: 'scan'
     if (strcmp(cmd, "scan") == 0) {
         cli_printf("\r\nI2C scan (0x03..0x77):\r\n");
         I2C_PrintDetectTable();
         return 1;
     }
-    if (strcmp(cmd, "v") == 0 || strcmp(cmd, "voltage") == 0) {
+
+    if (strcmp(cmd, "v") == 0 || strcmp(cmd, "voltage") == 0)
+    {
         cli_printf("Hinweis: v <mv> ist deprecated, nutze Setup (s).\r\n");
         char *mv_s = strtok(NULL, " \t");
         if (!mv_s) {
@@ -460,27 +433,7 @@ uint8_t I2C_Mode_HandleLine(char *line)
         }
 
         uint32_t mv = strtoul(mv_s, NULL, 0);
-        if (mv < 500u || mv > 3300u) {
-            cli_printf("Bereich: 500..3300 mV\r\n");
-            return 1;
-        }
-
-        // 1) Spannung setzen
-        uint16_t applied = 0;
-        if (PMIC_SetRail_mV("ldo1", (uint16_t)mv, &applied) != HAL_OK) {
-            cli_printf("LDO1 set %lumV FEHLER\r\n", (unsigned long)mv);
-            return 1;
-        }
-
-        // 2) Enable setzen
-        if (PMIC_SetRailEnable("ldo1", 1u) != HAL_OK) {
-            cli_printf("LDO1 enable FEHLER\r\n");
-            return 1;
-        }
-
-        cli_printf("LDO1: request %lumV -> applied %umV, EN=1\r\n",
-                   (unsigned long)mv, applied);
-        return 1;
+        setup_set_voltage(voltage_i2c,mv);
     }
 
     cli_printf("Unbekannt: %s (help)\r\n", cmd);
@@ -501,6 +454,8 @@ uint8_t I2C_Mode_HandleChar(char ch)
             return 1;
         }
 
+        if (ch == '?') { i2c_print_help(); return 1; }
+
         // Wenn Setup aktiv ist: Auswahl verarbeiten
         if (g_setup_state != I2C_SETUP_NONE) {
             if (g_setup_state == I2C_SETUP_MAIN) {
@@ -516,9 +471,9 @@ uint8_t I2C_Mode_HandleChar(char ch)
             }
 
             if (g_setup_state == I2C_SETUP_VOLTAGE) {
-                if (ch == '1') { i2c_setup_set_voltage(800u);  i2c_setup_show_voltage(); return 1; }
-                if (ch == '2') { i2c_setup_set_voltage(1800u); i2c_setup_show_voltage(); return 1; }
-                if (ch == '3') { i2c_setup_set_voltage(3300u); i2c_setup_show_voltage(); return 1; }
+                if (ch == '1') { setup_set_voltage(voltage_i2c,800u);  i2c_setup_show_voltage(); return 1; }
+                if (ch == '2') { setup_set_voltage(voltage_i2c,1800u); i2c_setup_show_voltage(); return 1; }
+                if (ch == '3') { setup_set_voltage(voltage_i2c,3300); i2c_setup_show_voltage(); return 1; }
                 if (ch == 'q' || ch == 'Q') { i2c_setup_show_main(); return 1; }
                 return 1;
             }

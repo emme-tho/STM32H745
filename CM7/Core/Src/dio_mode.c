@@ -2,6 +2,8 @@
 #include "cli.h"
 #include "hexstream.h"
 #include "pmic.h"
+#include "setup_utils.h"
+
 #include "usbd_cdc_if.h"   // CDC_Transmit_HS
 
 #include "main.h"
@@ -72,6 +74,10 @@ static uint8_t  g_buck4_en = 0;
 // Buffer enables (best effort)
 static uint8_t  g_do_buf_en = 1;
 static uint8_t  g_di_buf_en = 1;
+
+
+static const char* voltage_do = "buck3";
+static const char* voltage_di = "buck4";
 
 // ---------------- Helpers ----------------
 static void dio_apply_outputs(uint8_t out)
@@ -283,21 +289,6 @@ static void dio_setup_show_bufs(void)
     cli_printf("\r\nAuswahl: ");
 }
 
-static void dio_set_buck_voltage(const char *buck, uint16_t mv)
-{
-    uint16_t applied = 0;
-    if (PMIC_SetRail_mV(buck, mv, &applied) != HAL_OK) {
-        cli_printf("\r\n%s set %umV FEHLER\r\n", buck, (unsigned)mv);
-        return;
-    }
-    if (PMIC_SetRailEnable(buck, 1u) != HAL_OK) {
-        cli_printf("\r\n%s enable FEHLER\r\n", buck);
-        return;
-    }
-    cli_printf("\r\n%s: request %umV -> applied %umV, EN=1\r\n",
-               buck, (unsigned)mv, (unsigned)applied);
-    dio_refresh_rails();
-}
 
 static void dio_disable_buck(const char *buck)
 {
@@ -312,12 +303,11 @@ static void dio_disable_buck(const char *buck)
 // ---------------- Help ----------------
 static void dio_print_help(void)
 {
-    cli_printf("DIO Mode Befehle:\r\n");
+	cli_printf("DIO Mode Befehle:\r\n");
     cli_printf("  s        - Setup\r\n");
-    cli_printf("  wp       - Readback (OUT+IN)\r\n");
-    cli_printf("  w<OO>p   - Set OUT byte + Readback\r\n");
-    cli_printf("             Beispiel: wFFp -> alle OUT high\r\n");
-    cli_printf("  help\r\n");
+    cli_printf("  wp       - Readback (OUT+IN as 4 hex chars)\r\n");
+    cli_printf("  w<OO>p   - Set OUT (1 byte) + Readback\r\n");
+    cli_printf("  ?        - diese Hilfe\r\n");
 }
 
 // ---------------- Public API ----------------
@@ -328,30 +318,47 @@ void DIO_Mode_Enter(void)
 
     g_out_state = dio_read_outputs_best_effort();
     dio_refresh_rails();
-
-    cli_printf("\r\n[DIO Mode]\r\n");
-    cli_printf("  s        - Setup\r\n");
-    cli_printf("  wp       - Readback (OUT+IN as 4 hex chars)\r\n");
-    cli_printf("  w<OO>p   - Set OUT (1 byte) + Readback\r\n");
-    cli_printf("  help     - diese Hilfe\r\n");
+    dio_print_help();
 }
 
 uint8_t DIO_Mode_HandleLine(char *line)
 {
-    if (!line) return 0;
 
     while (*line == ' ' || *line == '\t') line++;
     if (*line == '\0') return 1;
 
-    if (strcmp(line, "help") == 0 || strcmp(line, "?") == 0) {
-        dio_print_help();
-        return 1;
-    }
+    char *cmd = strtok(line, " \t");
+    if (!cmd) return 1;
 
-    if (strcmp(line, "s") == 0) {
+    if (strcmp(cmd, "s") == 0) {
         dio_setup_show_main();
         return 1;
     }
+
+    if (strcmp(cmd, "vi") == 0 || strcmp(cmd, "voltage inputs") == 0)
+    {
+        cli_printf("Hinweis: vi <mv> ist deprecated, nutze Setup (s).\r\n");
+        char *mv_s = strtok(NULL, " \t");
+        if (!mv_s) {
+            cli_printf("Usage: vi <mv>\r\n");
+            return 1;
+        }
+
+        uint32_t mv = strtoul(mv_s, NULL, 0);
+        setup_set_voltage(voltage_di,mv);
+    }
+    if (strcmp(cmd, "vo") == 0 || strcmp(cmd, "voltage outputs") == 0)
+     {
+         cli_printf("Hinweis: vo <mv> ist deprecated, nutze Setup (s).\r\n");
+         char *mv_s = strtok(NULL, " \t");
+         if (!mv_s) {
+             cli_printf("Usage: vo <mv>\r\n");
+             return 1;
+         }
+
+         uint32_t mv = strtoul(mv_s, NULL, 0);
+         setup_set_voltage(voltage_do,mv);
+     }
 
     // optional convenience "w FF" (mit Enter)
     if (line[0] == 'w' || line[0] == 'W') {
@@ -367,7 +374,7 @@ uint8_t DIO_Mode_HandleLine(char *line)
         return 1;
     }
 
-    return 0;
+    return 1;
 }
 
 uint8_t DIO_Mode_HandleChar(char ch)
@@ -390,19 +397,19 @@ uint8_t DIO_Mode_HandleChar(char ch)
             }
 
             if (g_setup_state == DIO_SETUP_VOUT) {
-                if (ch == '0') { dio_disable_buck("buck3"); dio_setup_show_vout(); return 1; }
-                if (ch == '1') { dio_set_buck_voltage("buck3", 800u);  dio_setup_show_vout(); return 1; }
-                if (ch == '2') { dio_set_buck_voltage("buck3", 1800u); dio_setup_show_vout(); return 1; }
-                if (ch == '3') { dio_set_buck_voltage("buck3", 3300u); dio_setup_show_vout(); return 1; }
+                if (ch == '0') { dio_disable_buck(voltage_do); dio_setup_show_vout(); return 1; }
+                if (ch == '1') { setup_set_voltage(voltage_do, 800u);  dio_setup_show_vout(); return 1; }
+                if (ch == '2') { setup_set_voltage(voltage_do, 1800u); dio_setup_show_vout(); return 1; }
+                if (ch == '3') { setup_set_voltage(voltage_do, 3300u); dio_setup_show_vout(); return 1; }
                 if (ch == 'q' || ch == 'Q') { dio_setup_show_main(); return 1; }
                 return 1;
             }
 
             if (g_setup_state == DIO_SETUP_VIN) {
-                if (ch == '0') { dio_disable_buck("buck4"); dio_setup_show_vin(); return 1; }
-                if (ch == '1') { dio_set_buck_voltage("buck4", 800u);  dio_setup_show_vin(); return 1; }
-                if (ch == '2') { dio_set_buck_voltage("buck4", 1800u); dio_setup_show_vin(); return 1; }
-                if (ch == '3') { dio_set_buck_voltage("buck4", 3300u); dio_setup_show_vin(); return 1; }
+                if (ch == '0') { dio_disable_buck(voltage_di); dio_setup_show_vin(); return 1; }
+                if (ch == '1') { setup_set_voltage(voltage_di, 800u);  dio_setup_show_vin(); return 1; }
+                if (ch == '2') { setup_set_voltage(voltage_di, 1800u); dio_setup_show_vin(); return 1; }
+                if (ch == '3') { setup_set_voltage(voltage_di, 3300u); dio_setup_show_vin(); return 1; }
                 if (ch == 'q' || ch == 'Q') { dio_setup_show_main(); return 1; }
                 return 1;
             }
@@ -421,7 +428,7 @@ uint8_t DIO_Mode_HandleChar(char ch)
 
         if (ch == 's' || ch == 'S') { dio_setup_show_main(); return 1; }
 
-        if (ch == 'h' || ch == 'H' || ch == '?') { dio_print_help(); return 1; }
+        if (ch == '?') { dio_print_help(); return 1; }
 
         if (ch == 'w' || ch == 'W') {
             ws_active = 1;

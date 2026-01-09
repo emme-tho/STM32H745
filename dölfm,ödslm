@@ -1,0 +1,387 @@
+warning: in the working copy of 'CM7/UBT__CM7.cfg', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/CM7/Core/Inc/setup_utils.h b/CM7/Core/Inc/setup_utils.h[m
+[1mindex c117352..9f6e1cf 100644[m
+[1m--- a/CM7/Core/Inc/setup_utils.h[m
+[1m+++ b/CM7/Core/Inc/setup_utils.h[m
+[36m@@ -6,16 +6,11 @@[m
+ [m
+ HAL_StatusTypeDef setup_set_voltage([m
+     const char *rail,[m
+[31m-    uint16_t mv,[m
+[31m-    uint16_t min_mv,[m
+[31m-    uint16_t max_mv,[m
+[31m-    const char *label,        // z.B. "LDO1", "BUCK3"[m
+[31m-    uint16_t *applied_out     // optional, kann NULL sein[m
+[32m+[m[32m    uint16_t mv[m
+ );[m
+ [m
+ HAL_StatusTypeDef setup_disable_rail([m
+[31m-    const char *rail,[m
+[31m-    const char *label[m
+[32m+[m[32m    const char *rail[m
+ );[m
+ [m
+ #endif /* SETUP_UTILS_H_ */[m
+[1mdiff --git a/CM7/Core/Src/dio_mode.c b/CM7/Core/Src/dio_mode.c[m
+[1mindex 1172b46..d96971e 100644[m
+[1m--- a/CM7/Core/Src/dio_mode.c[m
+[1m+++ b/CM7/Core/Src/dio_mode.c[m
+[36m@@ -2,6 +2,8 @@[m
+ #include "cli.h"[m
+ #include "hexstream.h"[m
+ #include "pmic.h"[m
+[32m+[m[32m#include "setup_utils.h"[m
+[32m+[m
+ #include "usbd_cdc_if.h"   // CDC_Transmit_HS[m
+ [m
+ #include "main.h"[m
+[36m@@ -73,6 +75,10 @@[m [mstatic uint8_t  g_buck4_en = 0;[m
+ static uint8_t  g_do_buf_en = 1;[m
+ static uint8_t  g_di_buf_en = 1;[m
+ [m
+[32m+[m
+[32m+[m[32mstatic const char* voltage_do = "buck3";[m
+[32m+[m[32mstatic const char* voltage_di = "buck4";[m
+[32m+[m
+ // ---------------- Helpers ----------------[m
+ static void dio_apply_outputs(uint8_t out)[m
+ {[m
+[36m@@ -283,21 +289,6 @@[m [mstatic void dio_setup_show_bufs(void)[m
+     cli_printf("\r\nAuswahl: ");[m
+ }[m
+ [m
+[31m-static void dio_set_buck_voltage(const char *buck, uint16_t mv)[m
+[31m-{[m
+[31m-    uint16_t applied = 0;[m
+[31m-    if (PMIC_SetRail_mV(buck, mv, &applied) != HAL_OK) {[m
+[31m-        cli_printf("\r\n%s set %umV FEHLER\r\n", buck, (unsigned)mv);[m
+[31m-        return;[m
+[31m-    }[m
+[31m-    if (PMIC_SetRailEnable(buck, 1u) != HAL_OK) {[m
+[31m-        cli_printf("\r\n%s enable FEHLER\r\n", buck);[m
+[31m-        return;[m
+[31m-    }[m
+[31m-    cli_printf("\r\n%s: request %umV -> applied %umV, EN=1\r\n",[m
+[31m-               buck, (unsigned)mv, (unsigned)applied);[m
+[31m-    dio_refresh_rails();[m
+[31m-}[m
+ [m
+ static void dio_disable_buck(const char *buck)[m
+ {[m
+[36m@@ -312,12 +303,11 @@[m [mstatic void dio_disable_buck(const char *buck)[m
+ // ---------------- Help ----------------[m
+ static void dio_print_help(void)[m
+ {[m
+[31m-    cli_printf("DIO Mode Befehle:\r\n");[m
+[32m+[m	[32mcli_printf("DIO Mode Befehle:\r\n");[m
+     cli_printf("  s        - Setup\r\n");[m
+[31m-    cli_printf("  wp       - Readback (OUT+IN)\r\n");[m
+[31m-    cli_printf("  w<OO>p   - Set OUT byte + Readback\r\n");[m
+[31m-    cli_printf("             Beispiel: wFFp -> alle OUT high\r\n");[m
+[31m-    cli_printf("  help\r\n");[m
+[32m+[m[32m    cli_printf("  wp       - Readback (OUT+IN as 4 hex chars)\r\n");[m
+[32m+[m[32m    cli_printf("  w<OO>p   - Set OUT (1 byte) + Readback\r\n");[m
+[32m+[m[32m    cli_printf("  ?        - diese Hilfe\r\n");[m
+ }[m
+ [m
+ // ---------------- Public API ----------------[m
+[36m@@ -328,31 +318,48 @@[m [mvoid DIO_Mode_Enter(void)[m
+ [m
+     g_out_state = dio_read_outputs_best_effort();[m
+     dio_refresh_rails();[m
+[31m-[m
+[31m-    cli_printf("\r\n[DIO Mode]\r\n");[m
+[31m-    cli_printf("  s        - Setup\r\n");[m
+[31m-    cli_printf("  wp       - Readback (OUT+IN as 4 hex chars)\r\n");[m
+[31m-    cli_printf("  w<OO>p   - Set OUT (1 byte) + Readback\r\n");[m
+[31m-    cli_printf("  help     - diese Hilfe\r\n");[m
+[32m+[m[32m    dio_print_help();[m
+ }[m
+ [m
+ uint8_t DIO_Mode_HandleLine(char *line)[m
+ {[m
+[31m-    if (!line) return 0;[m
+ [m
+     while (*line == ' ' || *line == '\t') line++;[m
+     if (*line == '\0') return 1;[m
+ [m
+[31m-    if (strcmp(line, "help") == 0 || strcmp(line, "?") == 0) {[m
+[31m-        dio_print_help();[m
+[31m-        return 1;[m
+[31m-    }[m
+[32m+[m[32m    char *cmd = strtok(line, " \t");[m
+[32m+[m[32m    if (!cmd) return 1;[m
+ [m
+[31m-    if (strcmp(line, "s") == 0) {[m
+[32m+[m[32m    if (strcmp(cmd, "s") == 0) {[m
+         dio_setup_show_main();[m
+         return 1;[m
+     }[m
+ [m
+[32m+[m[32m    if (strcmp(cmd, "vi") == 0 || strcmp(cmd, "voltage inputs") == 0)[m
+[32m+[m[32m    {[m
+[32m+[m[32m        cli_printf("Hinweis: vi <mv> ist deprecated, nutze Setup (s).\r\n");[m
+[32m+[m[32m        char *mv_s = strtok(NULL, " \t");[m
+[32m+[m[32m        if (!mv_s) {[m
+[32m+[m[32m            cli_printf("Usage: vi <mv>\r\n");[m
+[32m+[m[32m            return 1;[m
+[32m+[m[32m        }[m
+[32m+[m
+[32m+[m[32m        uint32_t mv = strtoul(mv_s, NULL, 0);[m
+[32m+[m[32m        setup_set_voltage(voltage_di,mv);[m
+[32m+[m[32m    }[m
+[32m+[m[32m    if (strcmp(cmd, "vo") == 0 || strcmp(cmd, "voltage outputs") == 0)[m
+[32m+[m[32m     {[m
+[32m+[m[32m         cli_printf("Hinweis: vo <mv> ist deprecated, nutze Setup (s).\r\n");[m
+[32m+[m[32m         char *mv_s = strtok(NULL, " \t");[m
+[32m+[m[32m         if (!mv_s) {[m
+[32m+[m[32m             cli_printf("Usage: vo <mv>\r\n");[m
+[32m+[m[32m             return 1;[m
+[32m+[m[32m         }[m
+[32m+[m
+[32m+[m[32m         uint32_t mv = strtoul(mv_s, NULL, 0);[m
+[32m+[m[32m         setup_set_voltage(voltage_do,mv);[m
+[32m+[m[32m     }[m
+[32m+[m
+     // optional convenience "w FF" (mit Enter)[m
+     if (line[0] == 'w' || line[0] == 'W') {[m
+         char *p = line + 1;[m
+[36m@@ -367,7 +374,7 @@[m [muint8_t DIO_Mode_HandleLine(char *line)[m
+         return 1;[m
+     }[m
+ [m
+[31m-    return 0;[m
+[32m+[m[32m    return 1;[m
+ }[m
+ [m
+ uint8_t DIO_Mode_HandleChar(char ch)[m
+[36m@@ -390,19 +397,19 @@[m [muint8_t DIO_Mode_HandleChar(char ch)[m
+             }[m
+ [m
+             if (g_setup_state == DIO_SETUP_VOUT) {[m
+[31m-                if (ch == '0') { dio_disable_buck("buck3"); dio_setup_show_vout(); return 1; }[m
+[31m-                if (ch == '1') { dio_set_buck_voltage("buck3", 800u);  dio_setup_show_vout(); return 1; }[m
+[31m-                if (ch == '2') { dio_set_buck_voltage("buck3", 1800u); dio_setup_show_vout(); return 1; }[m
+[31m-                if (ch == '3') { dio_set_buck_voltage("buck3", 3300u); dio_setup_show_vout(); return 1; }[m
+[32m+[m[32m                if (ch == '0') { dio_disable_buck(voltage_do); dio_setup_show_vout(); return 1; }[m
+[32m+[m[32m                if (ch == '1') { setup_set_voltage(voltage_do, 800u);  dio_setup_show_vout(); return 1; }[m
+[32m+[m[32m                if (ch == '2') { setup_set_voltage(voltage_do, 1800u); dio_setup_show_vout(); return 1; }[m
+[32m+[m[32m                if (ch == '3') { setup_set_voltage(voltage_do, 3300u); dio_setup_show_vout(); return 1; }[m
+                 if (ch == 'q' || ch == 'Q') { dio_setup_show_main(); return 1; }[m
+                 return 1;[m
+             }[m
+ [m
+             if (g_setup_state == DIO_SETUP_VIN) {[m
+[31m-                if (ch == '0') { dio_disable_buck("buck4"); dio_setup_show_vin(); return 1; }[m
+[31m-                if (ch == '1') { dio_set_buck_voltage("buck4", 800u);  dio_setup_show_vin(); return 1; }[m
+[31m-                if (ch == '2') { dio_set_buck_voltage("buck4", 1800u); dio_setup_show_vin(); return 1; }[m
+[31m-                if (ch == '3') { dio_set_buck_voltage("buck4", 3300u); dio_setup_show_vin(); return 1; }[m
+[32m+[m[32m                if (ch == '0') { dio_disable_buck(voltage_di); dio_setup_show_vin(); return 1; }[m
+[32m+[m[32m                if (ch == '1') { setup_set_voltage(voltage_di, 800u);  dio_setup_show_vin(); return 1; }[m
+[32m+[m[32m                if (ch == '2') { setup_set_voltage(voltage_di, 1800u); dio_setup_show_vin(); return 1; }[m
+[32m+[m[32m                if (ch == '3') { setup_set_voltage(voltage_di, 3300u); dio_setup_show_vin(); return 1; }[m
+                 if (ch == 'q' || ch == 'Q') { dio_setup_show_main(); return 1; }[m
+                 return 1;[m
+             }[m
+[36m@@ -421,7 +428,7 @@[m [muint8_t DIO_Mode_HandleChar(char ch)[m
+ [m
+         if (ch == 's' || ch == 'S') { dio_setup_show_main(); return 1; }[m
+ [m
+[31m-        if (ch == 'h' || ch == 'H' || ch == '?') { dio_print_help(); return 1; }[m
+[32m+[m[32m        if (ch == '?') { dio_print_help(); return 1; }[m
+ [m
+         if (ch == 'w' || ch == 'W') {[m
+             ws_active = 1;[m
+[1mdiff --git a/CM7/Core/Src/i2c_mode.c b/CM7/Core/Src/i2c_mode.c[m
+[1mindex 7dbfaf0..5f7f437 100644[m
+[1m--- a/CM7/Core/Src/i2c_mode.c[m
+[1m+++ b/CM7/Core/Src/i2c_mode.c[m
+[36m@@ -2,6 +2,7 @@[m
+ #include "cli.h"[m
+ #include "pmic.h"[m
+ #include "usbd_cdc_if.h"   // CDC_Transmit_HS[m
+[32m+[m[32m#include "setup_utils.h"[m
+ [m
+ #include "stm32h7xx_hal.h"[m
+ #include <string.h>[m
+[36m@@ -75,6 +76,7 @@[m [mstatic uint8_t  rs_len_set    = 0;[m
+ static uint16_t rs_len        = 0;[m
+ static uint8_t  ws_rx[256];[m
+ [m
+[32m+[m[32mstatic const char* voltage_i2c = "ldo1";[m
+ [m
+ // ---------------- Setup menu state ----------------[m
+ typedef enum {[m
+[36m@@ -289,29 +291,7 @@[m [mstatic void i2c_setup_show_clock(void)[m
+     cli_printf("\r\nAuswahl: ");[m
+ }[m
+ [m
+[31m-static void i2c_setup_set_voltage(uint16_t mv)[m
+[31m-{[m
+[31m-    if (mv < 500u || mv > 3300u) {[m
+[31m-        cli_printf("\r\nBereich: 500..3300 mV\r\n");[m
+[31m-        return;[m
+[31m-    }[m
+ [m
+[31m-    uint16_t applied = 0;[m
+[31m-    if (PMIC_SetRail_mV("ldo1", (uint16_t)mv, &applied) != HAL_OK) {[m
+[31m-        cli_printf("\r\nLDO1 set %umV FEHLER\r\n", (unsigned)mv);[m
+[31m-        return;[m
+[31m-    }[m
+[31m-    if (PMIC_SetRailEnable("ldo1", 1u) != HAL_OK) {[m
+[31m-        cli_printf("\r\nLDO1 enable FEHLER\r\n");[m
+[31m-        return;[m
+[31m-    }[m
+[31m-[m
+[31m-    g_ldo1_mv = applied;[m
+[31m-    g_ldo1_en = 1u;[m
+[31m-[m
+[31m-    cli_printf("\r\nLDO1: request %umV -> applied %umV, EN=1\r\n",[m
+[31m-               (unsigned)mv, (unsigned)applied);[m
+[31m-}[m
+ [m
+ static void i2c_reinit_with_timing(uint32_t timing, uint32_t khz)[m
+ {[m
+[36m@@ -409,7 +389,7 @@[m [mstatic void i2c_print_help(void)[m
+     cli_printf("  w..r..p     - Read Stream : w(ADDR7)(REG..)(rLEN|rb|rw|rh)p\r\n");[m
+     cli_printf("               Beispiel: w3c57r01p (read 1 byte ab reg 0x57)\r\n");[m
+     cli_printf("               ADDR7 muss 0x00..0x7F sein (z.B. w50AABBp)\r\n");[m
+[31m-    cli_printf("  help\r\n");[m
+[32m+[m[32m    cli_printf("  ?  	      - diese Hilfe\r\n");[m
+ }[m
+ [m
+ [m
+[36m@@ -417,13 +397,7 @@[m [mstatic void i2c_print_help(void)[m
+ void I2C_Mode_Enter(void)[m
+ {[m
+     ws_reset();[m
+[31m-[m
+[31m-    cli_printf("\r\n[I2C Mode]\r\n");[m
+[31m-    cli_printf("  v <mv>      - I2C1 Pegel via LDO1 setzen (mV) + enable\r\n");[m
+[31m-    cli_printf("  s           - I2C scan (i2cdetect-style)\r\n");[m
+[31m-    cli_printf("  w..z..p     - Write Stream: w(ADDR7)(DATA..)(zDATA..)*p\r\n");[m
+[31m-    cli_printf("  w..r..p     - Read Stream : w(ADDR7)(REG..)(rLEN|rb|rw|rh)p\r\n");[m
+[31m-    cli_printf("  help        - diese Hilfe\r\n");[m
+[32m+[m[32m    i2c_print_help();[m
+ }[m
+ [m
+ uint8_t I2C_Mode_HandleLine(char *line)[m
+[36m@@ -435,23 +409,22 @@[m [muint8_t I2C_Mode_HandleLine(char *line)[m
+     char *cmd = strtok(line, " \t");[m
+     if (!cmd) return 1;[m
+ [m
+[31m-    if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {[m
+[31m-        i2c_print_help();[m
+[31m-        return 1;[m
+[31m-    }[m
+[31m-[m
+     // Setup menu auch als Line-Command: 's'[m
+     if (strcmp(cmd, "s") == 0) {[m
+         i2c_setup_show_main();[m
+         return 1;[m
+     }[m
+[32m+[m
+[32m+[m
+     // Scan als Line-Command: 'scan'[m
+     if (strcmp(cmd, "scan") == 0) {[m
+         cli_printf("\r\nI2C scan (0x03..0x77):\r\n");[m
+         I2C_PrintDetectTable();[m
+         return 1;[m
+     }[m
+[31m-    if (strcmp(cmd, "v") == 0 || strcmp(cmd, "voltage") == 0) {[m
+[32m+[m
+[32m+[m[32m    if (strcmp(cmd, "v") == 0 || strcmp(cmd, "voltage") == 0)[m
+[32m+[m[32m    {[m
+         cli_printf("Hinweis: v <mv> ist deprecated, nutze Setup (s).\r\n");[m
+         char *mv_s = strtok(NULL, " \t");[m
+         if (!mv_s) {[m
+[36m@@ -460,27 +433,7 @@[m [muint8_t I2C_Mode_HandleLine(char *line)[m
+         }[m
+ [m
+         uint32_t mv = strtoul(mv_s, NULL, 0);[m
+[31m-        if (mv < 500u || mv > 3300u) {[m
+[31m-            cli_printf("Bereich: 500..3300 mV\r\n");[m
+[31m-            return 1;[m
+[31m-        }[m
+[31m-[m
+[31m-        // 1) Spannung setzen[m
+[31m-        uint16_t applied = 0;[m
+[31m-        if (PMIC_SetRail_mV("ldo1", (uint16_t)mv, &applied) != HAL_OK) {[m
+[31m-            cli_printf("LDO1 set %lumV FEHLER\r\n", (unsigned long)mv);[m
+[31m-            return 1;[m
+[31m-        }[m
+[31m-[m
+[31m-        // 2) Enable setzen[m
+[31m-        if (PMIC_SetRailEnable("ldo1", 1u) != HAL_OK) {[m
+[31m-            cli_printf("LDO1 enable FEHLER\r\n");[m
+[31m-            return 1;[m
+[31m-        }[m
+[31m-[m
+[31m-        cli_printf("LDO1: request %lumV -> applied %umV, EN=1\r\n",[m
+[31m-                   (unsigned long)mv, applied);[m
+[31m-        return 1;[m
+[32m+[m[32m        setup_set_voltage(voltage_i2c,mv);[m
+     }[m
+ [m
+     cli_printf("Unbekannt: %s (help)\r\n", cmd);[m
+[36m@@ -501,6 +454,8 @@[m [muint8_t I2C_Mode_HandleChar(char ch)[m
+             return 1;[m
+         }[m
+ [m
+[32m+[m[32m        if (ch == '?') { i2c_print_help(); return 1; }[m
+[32m+[m
+         // Wenn Setup aktiv ist: Auswahl verarbeiten[m
+         if (g_setup_state != I2C_SETUP_NONE) {[m
+             if (g_setup_state == I2C_SETUP_MAIN) {[m
+[36m@@ -516,9 +471,9 @@[m [muint8_t I2C_Mode_HandleChar(char ch)[m
+             }[m
+ [m
+             if (g_setup_state == I2C_SETUP_VOLTAGE) {[m
+[31m-                if (ch == '1') { i2c_setup_set_voltage(800u);  i2c_setup_show_voltage(); return 1; }[m
+[31m-                if (ch == '2') { i2c_setup_set_voltage(1800u); i2c_setup_show_voltage(); return 1; }[m
+[31m-                if (ch == '3') { i2c_setup_set_voltage(3300u); i2c_setup_show_voltage(); return 1; }[m
+[32m+[m[32m                if (ch == '1') { setup_set_voltage(voltage_i2c,800u);  i2c_setup_show_voltage(); return 1; }[m
+[32m+[m[32m                if (ch == '2') { setup_set_voltage(voltage_i2c,1800u); i2c_setup_show_voltage(); return 1; }[m
+[32m+[m[32m                if (ch == '3') { setup_set_voltage(voltage_i2c,3300); i2c_setup_show_voltage(); return 1; }[m
+                 if (ch == 'q' || ch == 'Q') { i2c_setup_show_main(); return 1; }[m
+                 return 1;[m
+             }[m
+[1mdiff --git a/CM7/Core/Src/setup_utils.c b/CM7/Core/Src/setup_utils.c[m
+[1mindex 271d3ca..2b6f305 100644[m
+[1m--- a/CM7/Core/Src/setup_utils.c[m
+[1m+++ b/CM7/Core/Src/setup_utils.c[m
+[36m@@ -2,51 +2,41 @@[m
+ #include "pmic.h"[m
+ #include "cli.h"[m
+ [m
+[31m-HAL_StatusTypeDef setup_set_voltage([m
+[31m-    const char *rail,[m
+[31m-    uint16_t mv,[m
+[31m-    uint16_t min_mv,[m
+[31m-    uint16_t max_mv,[m
+[31m-    const char *label,[m
+[31m-    uint16_t *applied_out[m
+[31m-)[m
+[32m+[m[32mHAL_StatusTypeDef setup_set_voltage(const char *rail, uint16_t mv)[m
+ {[m
+     if (!rail) return HAL_ERROR;[m
+[31m-    if (!label) label = rail;[m
+ [m
+[31m-    if (mv < min_mv || mv > max_mv) {[m
+[31m-        cli_printf("\r\nBereich: %u..%u mV\r\n", (unsigned)min_mv, (unsigned)max_mv);[m
+[31m-        return HAL_ERROR;[m
+[31m-    }[m
+[32m+[m[32m    if (mv < 500u || mv > 3300u) {[m
+[32m+[m[32m           cli_printf("\r\nBereich: 500..3300 mV\r\n");[m
+[32m+[m[32m           return;[m
+[32m+[m[32m       }[m
+ [m
+     uint16_t applied = 0;[m
+     if (PMIC_SetRail_mV(rail, mv, &applied) != HAL_OK) {[m
+[31m-        cli_printf("\r\n%s set %umV FEHLER\r\n", label, (unsigned)mv);[m
+[32m+[m[32m        cli_printf("\r\n%s set %umV FEHLER\r\n", (unsigned)mv);[m
+         return HAL_ERROR;[m
+     }[m
+ [m
+     if (PMIC_SetRailEnable(rail, 1u) != HAL_OK) {[m
+[31m-  
