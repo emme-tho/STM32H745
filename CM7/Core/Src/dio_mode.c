@@ -290,7 +290,7 @@ static void dio_setup_show_bufs(void)
 }
 
 
-static void dio_disable_buck(const char *buck)
+/*static void dio_disable_buck(const char *buck)
 {
     if (PMIC_SetRailEnable(buck, 0u) != HAL_OK) {
         cli_printf("\r\n%s disable FEHLER\r\n", buck);
@@ -298,7 +298,7 @@ static void dio_disable_buck(const char *buck)
     }
     cli_printf("\r\n%s: EN=0\r\n", buck);
     dio_refresh_rails();
-}
+}*/
 
 // ---------------- Help ----------------
 static void dio_print_help(void)
@@ -397,7 +397,7 @@ uint8_t DIO_Mode_HandleChar(char ch)
             }
 
             if (g_setup_state == DIO_SETUP_VOUT) {
-                if (ch == '0') { dio_disable_buck(voltage_do); dio_setup_show_vout(); return 1; }
+                if (ch == '0') { setup_disable_rail(voltage_do); dio_setup_show_vout(); return 1; }
                 if (ch == '1') { setup_set_voltage(voltage_do, 800u);  dio_setup_show_vout(); return 1; }
                 if (ch == '2') { setup_set_voltage(voltage_do, 1800u); dio_setup_show_vout(); return 1; }
                 if (ch == '3') { setup_set_voltage(voltage_do, 3300u); dio_setup_show_vout(); return 1; }
@@ -406,7 +406,7 @@ uint8_t DIO_Mode_HandleChar(char ch)
             }
 
             if (g_setup_state == DIO_SETUP_VIN) {
-                if (ch == '0') { dio_disable_buck(voltage_di); dio_setup_show_vin(); return 1; }
+                if (ch == '0') { setup_disable_rail(voltage_di); dio_setup_show_vin(); return 1; }
                 if (ch == '1') { setup_set_voltage(voltage_di, 800u);  dio_setup_show_vin(); return 1; }
                 if (ch == '2') { setup_set_voltage(voltage_di, 1800u); dio_setup_show_vin(); return 1; }
                 if (ch == '3') { setup_set_voltage(voltage_di, 3300u); dio_setup_show_vin(); return 1; }

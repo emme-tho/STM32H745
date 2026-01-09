@@ -7,18 +7,18 @@ HAL_StatusTypeDef setup_set_voltage(const char *rail, uint16_t mv)
     if (!rail) return HAL_ERROR;
 
     if (mv < 500u || mv > 3300u) {
-           cli_printf("\r\nBereich: 500..3300 mV\r\n");
-           return;
-       }
+        cli_printf("\r\n%s: Bereich: 500..3300 mV\r\n", rail);
+        return HAL_ERROR;
+    }
 
     uint16_t applied = 0;
     if (PMIC_SetRail_mV(rail, mv, &applied) != HAL_OK) {
-        cli_printf("\r\n%s set %umV FEHLER\r\n", (unsigned)mv);
+        cli_printf("\r\n%s set %umV FEHLER\r\n", rail, (unsigned)mv);
         return HAL_ERROR;
     }
 
     if (PMIC_SetRailEnable(rail, 1u) != HAL_OK) {
-        cli_printf("\r\n%s enable FEHLER\r\n");
+        cli_printf("\r\n%s enable FEHLER\r\n", rail);
         return HAL_ERROR;
     }
 
