@@ -4,6 +4,7 @@
 
 #include "i2c_mode.h"   // jetzt nur I2C, Rest später
 #include "dio_mode.h"   // DIOs
+#include "spi_mode.h"   // SPI Master
 static ubt_mode_t g_mode = MODE_NONE;
 
 ubt_mode_t MODES_GetMode(void) { return g_mode; }
@@ -86,7 +87,7 @@ uint8_t MODES_HandleMenuChar(char ch)
         case 'S':
             g_mode = MODE_SPI;
             CLI_SetPrompt("SPI> ");
-            cli_printf("\r\nSPI Mode folgt.\r\n");
+            SPI_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
 
@@ -133,6 +134,7 @@ uint8_t MODES_HandleLine(char *line)
     {
         case MODE_I2C:  return I2C_Mode_HandleLine(line);
         case MODE_DIO:  return DIO_Mode_HandleLine(line);
+        case MODE_SPI:  return SPI_Mode_HandleLine(line);
 
         default:        return 0;
     }
@@ -146,6 +148,8 @@ uint8_t MODES_HandleChar(char ch)
             return I2C_Mode_HandleChar(ch);
         case MODE_DIO:
         	return DIO_Mode_HandleChar(ch);
+        case MODE_SPI:
+            return SPI_Mode_HandleChar(ch);
         default:
             return 0;
     }
