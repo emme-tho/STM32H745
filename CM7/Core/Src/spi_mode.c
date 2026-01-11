@@ -2,9 +2,9 @@
 #include "cli.h"
 #include "pmic.h"
 #include "setup_utils.h"
-
+#include "hexstream.h"
 #include "stm32h7xx_hal.h"
-
+#include "usbd_cdc_if.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -21,6 +21,9 @@
 // ============================================================
 
 static const char *voltage_spi = "buck5";
+
+
+
 
 // ---------------- Setup state ----------------
 typedef enum {
@@ -44,10 +47,18 @@ static uint8_t  g_buck5_en = 0;
 static uint8_t  g_spi_mode = 0;           // 0..3
 static uint8_t  g_spi_frame_motorola = 1; // 1=Motorola, 0=TI
 static uint8_t  g_spi_firstbit_msb = 1;   // 1=MSB first
-static uint8_t  g_spi_datasize_bits = 4;  // 4..32
+static uint8_t  g_spi_datasize_bits = 8;  // 4..32
 static uint32_t g_spi_req_mhz = 1;        // requested MHz
 static uint32_t g_spi_clk_hz = 0;         // actual Hz
 static uint16_t g_spi_prescaler = 2;      // 2..256
+
+#define SPI_TX_TIMEOUT_MS (100u)
+
+// ---------------- Write stream state ----------------
+static uint8_t     ws_active = 0;
+static hexstream_t ws_hex;
+static uint8_t     ws_rx[256];
+
 
 // ---------------- Helpers ----------------
 static void spi_refresh_rail(void)
@@ -222,6 +233,20 @@ static void spi_set_datasize(uint8_t bits)
     spi_apply_settings();
 }
 
+
+static void spi_ws_reset(void)
+{
+    ws_active = 0;
+    HEXS_Reset(&ws_hex);
+}
+
+static void spi_print_bytes(const uint8_t *b, uint16_t n)
+{
+    for (uint16_t i = 0; i < n; i++) {
+        cli_printf("%02X", b[i]);
+        if (i + 1u < n) cli_printf(" ");
+    }
+}
 // ---------------- Setup UI ----------------
 static void spi_print_setting_summary(void)
 {
@@ -354,12 +379,15 @@ static void spi_print_help(void)
 {
     cli_printf("SPI Mode Befehle:\r\n");
     cli_printf("  s           - Setup Menu\r\n");
+    cli_printf("  w..p        - Write Stream: w(HEX.. )p (TXRX, RX=TX length)\r\n");
     cli_printf("  ?           - Hilfe\r\n");
 }
 
 // ---------------- Public API ----------------
 void SPI_Mode_Enter(void)
 {
+    HEXS_Init(&ws_hex);
+    spi_ws_reset();
     spi_set_clock_mhz(g_spi_req_mhz);
     spi_print_help();
 }
@@ -476,8 +504,74 @@ uint8_t SPI_Mode_HandleChar(char ch)
         return 1;
     }
 
-    if (ch == 's' || ch == 'S') { spi_setup_show_main(); return 1; }
-    if (ch == '?') { spi_print_help(); return 1; }
+    if (!ws_active) {
+            if (ch == 's' || ch == 'S') { spi_setup_show_main(); return 1; }
+            if (ch == '?') { spi_print_help(); return 1; }
+
+            if (ch == 'w' || ch == 'W') {
+                ws_active = 1;
+                HEXS_Begin(&ws_hex);
+                cli_printf("\r\nwrite: ");
+                return 1;
+            }
+
+            return 0;
+        }
+
+        if (ch == 'x' || ch == 'X') {
+            spi_ws_reset();
+            cli_printf("\r\n(write aborted)\r\n");
+            return 0;
+        }
+
+        if (ch == 'p' || ch == 'P') {
+            int res = HEXS_FinalizeSegment(&ws_hex);
+            if (res != 0) {
+                cli_printf("\r\nwrite: FEHLER (hex/len)\r\n");
+                spi_ws_reset();
+                return 1;
+            }
+
+            uint16_t len = HEXS_BytesLen(&ws_hex);
+            uint8_t *tx = HEXS_Bytes(&ws_hex);
+
+            if (len == 0u) {
+                cli_printf("\r\nwrite: FEHLER (no data)\r\n");
+                spi_ws_reset();
+                return 1;
+            }
+
+            cli_printf("\r\nSPI TX: ");
+            spi_print_bytes(tx, len);
+            cli_printf("\r\n");
+
+    #ifdef HAL_SPI_MODULE_ENABLED
+            HAL_StatusTypeDef st = HAL_SPI_TransmitReceive(&hspi2, tx, ws_rx, len, SPI_TX_TIMEOUT_MS);
+            uint32_t err = HAL_SPI_GetError(&hspi2);
+
+            if (st == HAL_OK) {
+                cli_printf("SPI RX: ");
+                spi_print_bytes(ws_rx, len);
+                cli_printf("\r\n");
+            } else {
+                cli_printf("SPI TXRX FEHLER: st=%lu, err=0x%08lX\r\n",
+                           (unsigned long)st,
+                           (unsigned long)err);
+            }
+    #else
+            cli_printf("SPI HAL nicht aktiviert (HAL_SPI_MODULE_ENABLED).\r\n");
+    #endif
+
+            spi_ws_reset();
+            return 1;
+        }
+
+        if (HEXS_PushNibbleChar(&ws_hex, ch)) {
+            (void)CDC_Transmit_HS((uint8_t *)&ch, 1);
+            return 1;
+        }
+
+        return 1;
 
     return 0;
 }
