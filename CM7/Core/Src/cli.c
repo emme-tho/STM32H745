@@ -419,6 +419,12 @@ void CLI_Process(void)
             continue;
         }
 
+        if (MODES_IsRawActive()) {
+                  if (MODES_HandleChar((char)ch)) {
+                      continue;
+                  }
+              }
+
         // ---- ESC sequence parsing for arrows ----
         if (esc_state == 0) {
             if (ch == 0x1B) { esc_state = 1; continue; }

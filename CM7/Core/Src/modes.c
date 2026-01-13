@@ -5,6 +5,7 @@
 #include "i2c_mode.h"   // jetzt nur I2C, Rest später
 #include "dio_mode.h"   // DIOs
 #include "spi_mode.h"   // SPI Master
+#include "uart_mode.h"   // UART
 static ubt_mode_t g_mode = MODE_NONE;
 
 ubt_mode_t MODES_GetMode(void) { return g_mode; }
@@ -94,7 +95,7 @@ uint8_t MODES_HandleMenuChar(char ch)
         case 'U':
             g_mode = MODE_UART;
             CLI_SetPrompt("UART> ");
-            cli_printf("\r\nUART Mode folgt.\r\n");
+            UART_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
 
@@ -132,9 +133,10 @@ uint8_t MODES_HandleLine(char *line)
 
     switch (g_mode)
     {
-        case MODE_I2C:  return I2C_Mode_HandleLine(line);
-        case MODE_DIO:  return DIO_Mode_HandleLine(line);
-        case MODE_SPI:  return SPI_Mode_HandleLine(line);
+        case MODE_I2C:   return I2C_Mode_HandleLine(line);
+        case MODE_DIO:   return DIO_Mode_HandleLine(line);
+        case MODE_SPI:   return SPI_Mode_HandleLine(line);
+        case MODE_UART:  return UART_Mode_HandleLine(line);
 
         default:        return 0;
     }
@@ -150,10 +152,22 @@ uint8_t MODES_HandleChar(char ch)
         	return DIO_Mode_HandleChar(ch);
         case MODE_SPI:
             return SPI_Mode_HandleChar(ch);
+        case MODE_UART:
+            return UART_Mode_HandleChar(ch);
         default:
             return 0;
     }
 }
+
+
+uint8_t MODES_IsRawActive(void)
+{
+    if (g_mode == MODE_UART) {
+        return UART_Mode_IsRawActive();
+    }
+    return 0;
+}
+
 
 void MODES_ExitToRoot(void)
 {

@@ -57,20 +57,30 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define UART_TX_Pin GPIO_PIN_10
+#define UART_TX_GPIO_Port GPIOC
 #define Digital_OUT_0_Pin GPIO_PIN_1
 #define Digital_OUT_0_GPIO_Port GPIOE
+#define UART_RX_Pin GPIO_PIN_11
+#define UART_RX_GPIO_Port GPIOC
 #define Digital_OUT_6_Pin GPIO_PIN_2
 #define Digital_OUT_6_GPIO_Port GPIOE
 #define Digital_OUT_1_Pin GPIO_PIN_0
 #define Digital_OUT_1_GPIO_Port GPIOE
+#define UART_TX_EN_Pin GPIO_PIN_12
+#define UART_TX_EN_GPIO_Port GPIOC
 #define Digital_OUT_5_Pin GPIO_PIN_5
 #define Digital_OUT_5_GPIO_Port GPIOE
 #define Digital_OUT_4_Pin GPIO_PIN_4
 #define Digital_OUT_4_GPIO_Port GPIOE
 #define Digital_OUT_3_Pin GPIO_PIN_3
 #define Digital_OUT_3_GPIO_Port GPIOE
+#define RS485_EN_120R_Pin GPIO_PIN_10
+#define RS485_EN_120R_GPIO_Port GPIOA
 #define Digital_OUT_2_Pin GPIO_PIN_6
 #define Digital_OUT_2_GPIO_Port GPIOE
+#define RS485_SLR_Control_Pin GPIO_PIN_8
+#define RS485_SLR_Control_GPIO_Port GPIOC
 #define DO_V_A0_Pin GPIO_PIN_1
 #define DO_V_A0_GPIO_Port GPIOF
 #define DO_BUF_EN_N_Pin GPIO_PIN_4

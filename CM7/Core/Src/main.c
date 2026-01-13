@@ -127,6 +127,7 @@ Error_Handler();
   MX_I2C4_Init();
   MX_I2C1_Init();
   MX_SPI2_Init();
+  MX_UART4_Init();
   /* USER CODE BEGIN 2 */
   //uint8_t msg[] = "Hello World from UART8!\r\n";
 

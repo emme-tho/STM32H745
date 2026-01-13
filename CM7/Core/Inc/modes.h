@@ -26,6 +26,8 @@ void MODES_GotoMenu(void);   // Ins Interface-Menü springen
 // Wird aus CLI_Process pro Zeichen aufgerufen, wenn MODE_MENU aktiv ist
 // return 1 wenn Zeichen verarbeitet (z.B. Mode gewechselt), sonst 0
 uint8_t MODES_HandleMenuChar(char ch);
+uint8_t MODES_IsRawActive(void);
+
 
 // Line-Handler: wenn ein Mode aktiv ist, wird die Zeile an den Mode weitergereicht
 // return 1 wenn verarbeitet, sonst 0
