@@ -41,4 +41,6 @@ void MODES_ExitToRoot(void);
 
 uint8_t MODES_HandleChar(char ch);
 
+void MODES_Poll(void);
+
 #endif /* INC_MODES_H_ */

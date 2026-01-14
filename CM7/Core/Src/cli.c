@@ -397,7 +397,9 @@ void CLI_OnUsbConnect(uint8_t connected)
 
 void CLI_Process(void)
 {
-    if (cli_connect_event && !cli_banner_printed) {
+    MODES_Poll();
+
+	if (cli_connect_event && !cli_banner_printed) {
         cli_connect_event = 0;
         CLI_PrintBanner();
         CLI_PrintPrompt();

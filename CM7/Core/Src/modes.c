@@ -169,6 +169,14 @@ uint8_t MODES_IsRawActive(void)
 }
 
 
+void MODES_Poll(void)
+{
+    if (g_mode == MODE_UART) {
+        UART_Mode_Poll();
+    }
+}
+
+
 void MODES_ExitToRoot(void)
 {
     g_mode = MODE_NONE;

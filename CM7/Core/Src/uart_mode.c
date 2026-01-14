@@ -3,6 +3,7 @@
 #include "main.h"
 #include "stm32h7xx_hal.h"
 #include <string.h>
+#include "usbd_cdc_if.h"
 
 // ============================================================
 // UART MODE (RS485/UART via THVD1424R)
@@ -259,7 +260,7 @@ uint8_t UART_Mode_HandleLine(char *line)
 
     if (strcmp(line, "w") == 0 || strcmp(line, "W") == 0) {
         g_uart_tunnel = 1;
-        uart_set_tx_en(1u);
+        uart_set_tx_en(0u);
         cli_printf("\r\nUART tunnel aktiv (ESC beendet)\r\n");
         return 1;
     }
@@ -286,7 +287,9 @@ uint8_t UART_Mode_HandleChar(char ch)
 #ifdef HAL_UART_MODULE_ENABLED
         UART_HandleTypeDef *huart = uart_get_handle();
         if (huart != NULL) {
+        	uart_set_tx_en(1u);
             (void)HAL_UART_Transmit(huart, (uint8_t *)&ch, 1u, UART_TX_TIMEOUT_MS);
+            uart_set_tx_en(0u);
         }
 #endif
         return 1;
@@ -334,7 +337,7 @@ uint8_t UART_Mode_HandleChar(char ch)
     if (ch == '?') { uart_print_help(); return 1; }
     if (ch == 'w' || ch == 'W') {
         g_uart_tunnel = 1;
-        uart_set_tx_en(1u);
+        uart_set_tx_en(0u);
         cli_printf("\r\nUART tunnel aktiv (ESC beendet)\r\n");
         return 1;
     }
@@ -346,3 +349,29 @@ uint8_t UART_Mode_IsRawActive(void)
 {
     return g_uart_tunnel ? 1u : 0u;
 }
+
+void UART_Mode_Poll(void)
+{
+    if (!g_uart_tunnel) {
+        return;
+    }
+
+#ifdef HAL_UART_MODULE_ENABLED
+    UART_HandleTypeDef *huart = uart_get_handle();
+    if (huart == NULL) {
+        return;
+    }
+
+    for (uint32_t i = 0; i < 64u; i++) {
+        if (__HAL_UART_GET_FLAG(huart, UART_FLAG_RXNE) == RESET) {
+            break;
+        }
+
+        uint8_t ch = (uint8_t)(huart->Instance->RDR & 0xFFu);
+        if (CDC_Transmit_HS(&ch, 1u) == USBD_BUSY) {
+            break;
+        }
+    }
+#endif
+}
+
