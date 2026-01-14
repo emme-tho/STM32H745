@@ -15,6 +15,30 @@ void MODES_Init(void)
     g_mode = MODE_NONE;
 }
 
+static const char *mode_name(ubt_mode_t mode)
+{
+    switch (mode) {
+        case MODE_MENU: return "MENU";
+        case MODE_I2C:  return "I2C";
+        case MODE_CAN:  return "CAN";
+        case MODE_SPI:  return "SPI";
+        case MODE_UART: return "UART";
+        case MODE_SSI:  return "SSI";
+        case MODE_DIO:  return "DIO";
+        default:        return "ROOT";
+    }
+}
+
+static void mode_print_entry(ubt_mode_t mode)
+{
+    cli_printf("\r\nMode %s entry\r\n", mode_name(mode));
+}
+
+static void mode_print_exit(ubt_mode_t mode)
+{
+    cli_printf("\r\nMode %s exit\r\n", mode_name(mode));
+}
+
 static void print_main_menu(void)
 {
     cli_printf("\r\nMain Menu:\r\n");
@@ -31,7 +55,10 @@ static void print_main_menu(void)
 
 void MODES_StartMenu(void)
 {
-    g_mode = MODE_MENU;
+    if (g_mode != MODE_NONE) {
+        mode_print_exit(g_mode);
+    }
+	g_mode = MODE_MENU;
     CLI_SetPrompt("MODE> ");
     print_main_menu();
     CLI_PrintPrompt();
@@ -39,9 +66,13 @@ void MODES_StartMenu(void)
 
 void MODES_GotoMenu(void)
 {
-    // Egal woher: ins Menü
+    if (g_mode != MODE_MENU && g_mode != MODE_NONE) {
+        mode_print_exit(g_mode);
+    }
+	// Egal woher: ins Menü
     g_mode = MODE_MENU;
     CLI_SetPrompt("MODE> ");
+    mode_print_entry(g_mode);
     print_main_menu();
     CLI_PrintPrompt();
 }
@@ -72,43 +103,55 @@ uint8_t MODES_HandleMenuChar(char ch)
     switch (ch)
     {
         case 'I':
+            mode_print_exit(g_mode);
             g_mode = MODE_I2C;
             CLI_SetPrompt("I2C> ");
+            mode_print_entry(g_mode);
             I2C_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
 
         case 'C':
+            mode_print_exit(g_mode);
             g_mode = MODE_CAN;
             CLI_SetPrompt("CAN> ");
+            mode_print_entry(g_mode);
             cli_printf("\r\nCAN Mode folgt.\r\n");
             CLI_PrintPrompt();
             return 1;
 
         case 'S':
+            mode_print_exit(g_mode);
             g_mode = MODE_SPI;
             CLI_SetPrompt("SPI> ");
+            mode_print_entry(g_mode);
             SPI_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
 
         case 'U':
+            mode_print_exit(g_mode);
             g_mode = MODE_UART;
             CLI_SetPrompt("UART> ");
+            mode_print_entry(g_mode);
             UART_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
 
         case 'E':
+            mode_print_exit(g_mode);
             g_mode = MODE_SSI;
             CLI_SetPrompt("SSI> ");
+            mode_print_entry(g_mode);
             cli_printf("\r\nSSI Mode folgt.\r\n");
             CLI_PrintPrompt();
             return 1;
 
         case 'D':
+            mode_print_exit(g_mode);
             g_mode = MODE_DIO;
             CLI_SetPrompt("DIO> ");
+            mode_print_entry(g_mode);
             DIO_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
@@ -179,8 +222,10 @@ void MODES_Poll(void)
 
 void MODES_ExitToRoot(void)
 {
+    if (g_mode != MODE_NONE) {
+        mode_print_exit(g_mode);
+    }
     g_mode = MODE_NONE;
     CLI_SetPrompt("> ");
-    cli_printf("\r\nZurueck.\r\n");
     CLI_PrintPrompt();
 }

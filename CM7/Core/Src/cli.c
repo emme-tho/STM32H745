@@ -1,4 +1,4 @@
-/*
+ /*
  * cli.c
  *
  *  Created on: Dec 30, 2025
@@ -33,6 +33,7 @@ static uint16_t cli_line_pos = 0;
 
 static uint8_t cli_banner_printed = 0;
 static volatile uint8_t cli_connect_event = 0;
+static uint8_t cli_debug_enabled = 1u;
 
 // ESC sequence parsing (for arrow keys)
 static uint8_t esc_state = 0; // 0 none, 1 got ESC, 2 got ESC[
@@ -57,13 +58,25 @@ void CLI_PrintPrompt(void)
     cli_printf("\r\n%s", g_prompt);
 }
 
-// ----------------------------- USB printf -----------------------------
-void cli_printf(const char *fmt, ...)
+void CLI_SetDebug(uint8_t enabled)
 {
-    va_list args;
-    va_start(args, fmt);
+    cli_debug_enabled = enabled ? 1u : 0u;
+}
+
+uint8_t CLI_IsDebugEnabled(void)
+{
+    return cli_debug_enabled;
+}
+
+void CLI_PrintDebugRequired(void)
+{
+    cli_printf("Debug ist AUS. Bitte 'debug on' eingeben.\r\n");
+}
+
+// ----------------------------- USB printf -----------------------------
+static void cli_vprintf_send(const char *fmt, va_list args)
+{
     int len = vsnprintf(cli_tx_buf, sizeof(cli_tx_buf), fmt, args);
-    va_end(args);
 
     if (len <= 0) return;
     if (len > (int)sizeof(cli_tx_buf)) len = sizeof(cli_tx_buf);
@@ -75,10 +88,28 @@ void cli_printf(const char *fmt, ...)
     } while (result == USBD_BUSY);
 }
 
+void cli_printf(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    cli_vprintf_send(fmt, args);
+    va_end(args);
+}
+
+void cli_printf_debug(const char *fmt, ...)
+{
+    if (!cli_debug_enabled) return;
+
+    va_list args;
+    va_start(args, fmt);
+    cli_vprintf_send(fmt, args);
+    va_end(args);
+}
+
 // ----------------------------- Banner -----------------------------
 static void CLI_PrintBanner(void)
 {
-    cli_printf(
+	cli_printf_debug(
         "\r\n"
         "========================================\r\n"
         "  %s\r\n"
@@ -179,23 +210,29 @@ static void CLI_RedrawLine(const char *new_line)
 // ----------------------------- Help -----------------------------
 static void CLI_PrintHelp(void)
 {
-    cli_printf("Verfuegbare Befehle:\r\n");
-    cli_printf("  help | ?\r\n");
-    cli_printf("  info\r\n");
-    cli_printf("  clear | cls\r\n");
-    cli_printf("  start                - Mode-Menue starten\r\n");
-    cli_printf("\r\nPMIC:\r\n");
-    cli_printf("  pmic ping\r\n");
-    cli_printf("  pmic scan\r\n");
-    cli_printf("  pmic read  <reg>\r\n");
-    cli_printf("  pmic write <reg> <val>\r\n");
-    cli_printf("  pmic dump <from> <to>\r\n");
-    cli_printf("  pmic rails\r\n");
-    cli_printf("  pmic en  <rail> <0|1>\r\n");
-    cli_printf("  pmic set <rail> <mv>\r\n");
-    cli_printf("  pmic get <rail>\r\n");
-    cli_printf("\r\nCLI:\r\n");
-    cli_printf("  History: Pfeil Hoch/Runter (↑/↓)\r\n");
+    if (!CLI_IsDebugEnabled()) {
+        CLI_PrintDebugRequired();
+        return;
+    }
+
+    cli_printf_debug("Verfuegbare Befehle:\r\n");
+    cli_printf_debug("  help | ?\r\n");
+    cli_printf_debug("  info\r\n");
+    cli_printf_debug("  clear | cls\r\n");
+    cli_printf_debug("  start                - Mode-Menue starten\r\n");
+    cli_printf_debug("  debug on|off\r\n");
+    cli_printf_debug("\r\nPMIC:\r\n");
+    cli_printf_debug("  pmic ping\r\n");
+    cli_printf_debug("  pmic scan\r\n");
+    cli_printf_debug("  pmic read  <reg>\r\n");
+    cli_printf_debug("  pmic write <reg> <val>\r\n");
+    cli_printf_debug("  pmic dump <from> <to>\r\n");
+    cli_printf_debug("  pmic rails\r\n");
+    cli_printf_debug("  pmic en  <rail> <0|1>\r\n");
+    cli_printf_debug("  pmic set <rail> <mv>\r\n");
+    cli_printf_debug("  pmic get <rail>\r\n");
+    cli_printf_debug("\r\nCLI:\r\n");
+    cli_printf_debug("  History: Pfeil Hoch/Runter (↑/↓)\r\n");
 }
 
 // ----------------------------- Top-Level command handler
@@ -216,6 +253,28 @@ static uint8_t CLI_HandleLine_TopLevel(char *line)
         CLI_PrintBanner();
         return 1;
     }
+
+    if (strcmp(cmd, "debug") == 0) {
+        char *state = strtok(NULL, " \t");
+        if (!state) {
+            cli_printf("Debug ist %s.\r\n", CLI_IsDebugEnabled() ? "ON" : "OFF");
+            return 1;
+        }
+
+        if (strcmp(state, "on") == 0) {
+            CLI_SetDebug(1u);
+            cli_printf("Debug: ON\r\n");
+            return 1;
+        }
+        if (strcmp(state, "off") == 0) {
+            CLI_SetDebug(0u);
+            cli_printf("Debug: OFF\r\n");
+            return 1;
+        }
+
+        cli_printf("Usage: debug on|off\r\n");
+        return 1;
+    }
     if (strcmp(cmd, "clear") == 0 || strcmp(cmd, "cls") == 0) {
         cli_printf("\033[2J\033[H");
         CLI_PrintPrompt();
@@ -232,8 +291,8 @@ static uint8_t CLI_HandleLine_TopLevel(char *line)
         if (!sub) { CLI_PrintHelp(); return 1; }
 
         if (strcmp(sub, "ping") == 0) {
-            if (PMIC_Ping() == HAL_OK) cli_printf("PMIC: OK (addr 0x%02X)\r\n", PMIC_I2C_ADDR_7BIT);
-            else                       cli_printf("PMIC: NICHT erreichbar (addr 0x%02X)\r\n", PMIC_I2C_ADDR_7BIT);
+            if (PMIC_Ping() == HAL_OK) cli_printf_debug("PMIC: OK (addr 0x%02X)\r\n", PMIC_I2C_ADDR_7BIT);
+            else                       cli_printf_debug("PMIC: NICHT erreichbar (addr 0x%02X)\r\n", PMIC_I2C_ADDR_7BIT);
             return 1;
         }
 
@@ -242,47 +301,47 @@ static uint8_t CLI_HandleLine_TopLevel(char *line)
             uint32_t cnt = 0;
 
             if (PMIC_I2C_Scan(found, 32, &cnt) != HAL_OK) {
-                cli_printf("I2C Scan Fehler\r\n");
+            	cli_printf_debug("I2C Scan Fehler\r\n");
                 return 1;
             }
 
-            cli_printf("I2C scan (0x08..0x77):\r\n");
+            cli_printf_debug("I2C scan (0x08..0x77):\r\n");
             uint32_t show = (cnt > 32u) ? 32u : cnt;
-            for (uint32_t i = 0; i < show; i++) cli_printf(" - found device at 0x%02X\r\n", found[i]);
-            if (cnt > 32u) cli_printf(" ... (%lu weitere, Liste gekuerzt)\r\n", (unsigned long)(cnt - 32u));
-            cli_printf("Scan done.\r\n");
+            for (uint32_t i = 0; i < show; i++) cli_printf_debug(" - found device at 0x%02X\r\n", found[i]);
+            if (cnt > 32u) cli_printf_debug(" ... (%lu weitere, Liste gekuerzt)\r\n", (unsigned long)(cnt - 32u));
+            cli_printf_debug("Scan done.\r\n");
             return 1;
         }
 
         if (strcmp(sub, "rails") == 0) {
-            cli_printf("Rails:\r\n");
-            cli_printf("  buck1 buck3 buck4 buck5 ldo1 ldo2 ldo3 ldo4\r\n");
-            cli_printf("BUCK2 ist gesperrt.\r\n");
+        	cli_printf_debug("Rails:\r\n");
+        	cli_printf_debug("  buck1 buck3 buck4 buck5 ldo1 ldo2 ldo3 ldo4\r\n");
+        	cli_printf_debug("BUCK2 ist gesperrt.\r\n");
             return 1;
         }
 
         if (strcmp(sub, "read") == 0) {
             char *reg_str = strtok(NULL, " \t");
-            if (!reg_str) { cli_printf("Usage: pmic read <reg>\r\n"); return 1; }
+            if (!reg_str) { cli_printf_debug("Usage: pmic read <reg>\r\n"); return 1; }
             uint32_t reg = strtoul(reg_str, NULL, 0);
             uint8_t val = 0;
             if (PMIC_ReadReg((uint8_t)reg, &val) == HAL_OK)
-                cli_printf("PMIC[0x%02lX] = 0x%02X\r\n", reg, val);
+            	cli_printf_debug("PMIC[0x%02lX] = 0x%02X\r\n", reg, val);
             else
-                cli_printf("Fehler beim Lesen von Reg 0x%02lX\r\n", reg);
+            	cli_printf_debug("Fehler beim Lesen von Reg 0x%02lX\r\n", reg);
             return 1;
         }
 
         if (strcmp(sub, "write") == 0) {
             char *reg_str = strtok(NULL, " \t");
             char *val_str = strtok(NULL, " \t");
-            if (!reg_str || !val_str) { cli_printf("Usage: pmic write <reg> <val>\r\n"); return 1; }
+            if (!reg_str || !val_str) { cli_printf_debug("Usage: pmic write <reg> <val>\r\n"); return 1; }
             uint32_t reg = strtoul(reg_str, NULL, 0);
             uint32_t val = strtoul(val_str, NULL, 0);
 
             HAL_StatusTypeDef st = PMIC_WriteReg((uint8_t)reg, (uint8_t)val);
-            if (st == HAL_OK) cli_printf("PMIC[0x%02lX] <- 0x%02lX (OK)\r\n", reg, val);
-            else              cli_printf("PMIC write BLOCKED/FAILED at 0x%02lX\r\n", reg);
+            if (st == HAL_OK) cli_printf_debug("PMIC[0x%02lX] <- 0x%02lX (OK)\r\n", reg, val);
+            else              cli_printf_debug("PMIC write BLOCKED/FAILED at 0x%02lX\r\n", reg);
             return 1;
         }
 
@@ -290,7 +349,7 @@ static uint8_t CLI_HandleLine_TopLevel(char *line)
             char *from_s = strtok(NULL, " \t");
             char *to_s   = strtok(NULL, " \t");
             if (!from_s || !to_s) {
-                cli_printf("Usage: pmic dump <from> <to>   (z.B. pmic dump 0x00 0x40)\r\n");
+            	cli_printf_debug("Usage: pmic dump <from> <to>   (z.B. pmic dump 0x00 0x40)\r\n");
                 return 1;
             }
 
@@ -298,53 +357,53 @@ static uint8_t CLI_HandleLine_TopLevel(char *line)
             uint32_t to   = strtoul(to_s, NULL, 0);
 
             if (from > 0xFFu || to > 0xFFu || from > to) {
-                cli_printf("Ungueltiger Bereich. Erlaubt: 0x00..0xFF und from<=to\r\n");
+            	cli_printf_debug("Ungueltiger Bereich. Erlaubt: 0x00..0xFF und from<=to\r\n");
                 return 1;
             }
 
-            cli_printf("PMIC dump 0x%02lX..0x%02lX\r\n", from, to);
+            cli_printf_debug("PMIC dump 0x%02lX..0x%02lX\r\n", from, to);
 
             uint8_t val = 0;
             for (uint32_t reg = from; reg <= to; reg++) {
-                if ((reg - from) % 16u == 0u) cli_printf("\r\n0x%02lX: ", reg);
+                if ((reg - from) % 16u == 0u) cli_printf_debug("\r\n0x%02lX: ", reg);
 
-                if (PMIC_ReadReg((uint8_t)reg, &val) == HAL_OK) cli_printf("%02X ", val);
-                else                                             cli_printf("?? ");
+                if (PMIC_ReadReg((uint8_t)reg, &val) == HAL_OK) cli_printf_debug("%02X ", val);
+                else                                             cli_printf_debug("?? ");
             }
-            cli_printf("\r\n");
+            cli_printf_debug("\r\n");
             return 1;
         }
 
         if (strcmp(sub, "en") == 0) {
             char *rail = strtok(NULL, " \t");
             char *val  = strtok(NULL, " \t");
-            if (!rail || !val) { cli_printf("Usage: pmic en <rail> <0|1>\r\n"); return 1; }
+            if (!rail || !val) { cli_printf_debug("Usage: pmic en <rail> <0|1>\r\n"); return 1; }
             uint32_t en = strtoul(val, NULL, 0);
 
             if (PMIC_SetRailEnable(rail, (uint8_t)(en ? 1u : 0u)) == HAL_OK)
-                cli_printf("%s enable -> %lu OK\r\n", rail, (unsigned long)en);
+            	cli_printf_debug("%s enable -> %lu OK\r\n", rail, (unsigned long)en);
             else
-                cli_printf("%s enable -> FEHLER/BLOCKED\r\n", rail);
+            	cli_printf_debug("%s enable -> FEHLER/BLOCKED\r\n", rail);
             return 1;
         }
 
         if (strcmp(sub, "set") == 0) {
             char *rail = strtok(NULL, " \t");
             char *mv_s = strtok(NULL, " \t");
-            if (!rail || !mv_s) { cli_printf("Usage: pmic set <rail> <mv>\r\n"); return 1; }
+            if (!rail || !mv_s) { cli_printf_debug("Usage: pmic set <rail> <mv>\r\n"); return 1; }
 
             uint32_t mv = strtoul(mv_s, NULL, 0);
             uint16_t applied = 0;
 
             HAL_StatusTypeDef st = PMIC_SetRail_mV(rail, (uint16_t)mv, &applied);
-            if (st == HAL_OK) cli_printf("%s request %lumV -> applied %umV OK\r\n", rail, (unsigned long)mv, applied);
-            else              cli_printf("%s set %lumV FEHLER\r\n", rail, (unsigned long)mv);
+            if (st == HAL_OK) cli_printf_debug("%s request %lumV -> applied %umV OK\r\n", rail, (unsigned long)mv, applied);
+            else              cli_printf_debug("%s set %lumV FEHLER\r\n", rail, (unsigned long)mv);
             return 1;
         }
 
         if (strcmp(sub, "get") == 0) {
             char *rail = strtok(NULL, " \t");
-            if (!rail) { cli_printf("Usage: pmic get <rail>\r\n"); return 1; }
+            if (!rail) { cli_printf_debug("Usage: pmic get <rail>\r\n"); return 1; }
 
             uint8_t en=0, vsel=0, c1=0, c2=0;
             uint16_t mv = 0;
@@ -354,15 +413,15 @@ static uint8_t CLI_HandleLine_TopLevel(char *line)
                     cli_printf("%s: EN=%u, VSEL=%u, VOUT1=0x%02X, VOUT2=0x%02X, ACTIVE=%umV\r\n",
                                rail, en, vsel, c1, c2, mv);
                 else
-                    cli_printf("%s: EN=%u, VSET=0x%02X, MV=%umV\r\n", rail, en, c1, mv);
+                	cli_printf_debug("%s: EN=%u, VSET=0x%02X, MV=%umV\r\n", rail, en, c1, mv);
             } else {
-                cli_printf("%s: FEHLER\r\n", rail);
+            	cli_printf_debug("%s: FEHLER\r\n", rail);
             }
             return 1;
         }
 
-        cli_printf("Unbekannter PMIC-Befehl: %s\r\n", sub);
-        cli_printf("Tippe 'pmic' oder 'help' fuer Hilfe.\r\n");
+        cli_printf_debug("Unbekannter PMIC-Befehl: %s\r\n", sub);
+        cli_printf_debug("Tippe 'pmic' oder 'help' fuer Hilfe.\r\n");
         return 1;
     }
 

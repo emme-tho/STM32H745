@@ -303,6 +303,11 @@ static void dio_setup_show_bufs(void)
 // ---------------- Help ----------------
 static void dio_print_help(void)
 {
+	if (!CLI_IsDebugEnabled())
+	{
+	        CLI_PrintDebugRequired();
+	        return;
+	}
 	cli_printf("DIO Mode Befehle:\r\n");
     cli_printf("  s        - Setup\r\n");
     cli_printf("  wp       - Readback (OUT+IN as 4 hex chars)\r\n");
@@ -318,7 +323,9 @@ void DIO_Mode_Enter(void)
 
     g_out_state = dio_read_outputs_best_effort();
     dio_refresh_rails();
-    dio_print_help();
+    if (CLI_IsDebugEnabled()) {
+        dio_print_help();
+    }
 }
 
 uint8_t DIO_Mode_HandleLine(char *line)

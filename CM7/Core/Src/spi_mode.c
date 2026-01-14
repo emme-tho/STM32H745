@@ -377,6 +377,10 @@ static void spi_setup_show_firstbit(void)
 // ---------------- Help ----------------
 static void spi_print_help(void)
 {
+    if (!CLI_IsDebugEnabled()) {
+        CLI_PrintDebugRequired();
+        return;
+    }
     cli_printf("SPI Mode Befehle:\r\n");
     cli_printf("  s           - Setup Menu\r\n");
     cli_printf("  w..p        - Write Stream: w(HEX.. )p (TXRX, RX=TX length)\r\n");
@@ -389,7 +393,9 @@ void SPI_Mode_Enter(void)
     HEXS_Init(&ws_hex);
     spi_ws_reset();
     spi_set_clock_mhz(g_spi_req_mhz);
-    spi_print_help();
+    if (CLI_IsDebugEnabled()) {
+        spi_print_help();
+    }
 }
 
 uint8_t SPI_Mode_HandleLine(char *line)

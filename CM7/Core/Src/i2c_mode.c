@@ -382,6 +382,10 @@ static void I2C_PrintDetectTable(void)
 // ---------------- Help ----------------
 static void i2c_print_help(void)
 {
+    if (!CLI_IsDebugEnabled()) {
+        CLI_PrintDebugRequired();
+        return;
+    }
     cli_printf("I2C Mode Befehle:\r\n");
     cli_printf("  v <mv>      - LDO1 Spannung setzen (500..3300mV) und enable\r\n");
     cli_printf("  s           - I2C scan (i2cdetect-style)\r\n");
@@ -397,6 +401,9 @@ static void i2c_print_help(void)
 void I2C_Mode_Enter(void)
 {
     ws_reset();
+    if (CLI_IsDebugEnabled()) {
+        i2c_print_help();
+    }
     i2c_print_help();
 }
 

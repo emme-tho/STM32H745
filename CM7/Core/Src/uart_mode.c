@@ -231,6 +231,10 @@ static void uart_setup_show_baud(void)
 
 static void uart_print_help(void)
 {
+    if (!CLI_IsDebugEnabled()) {
+        CLI_PrintDebugRequired();
+        return;
+    }
     cli_printf("UART Mode Befehle:\r\n");
     cli_printf("  s        - Setup\r\n");
     cli_printf("  w        - UART Tunnel (ESC beendet)\r\n");
@@ -244,9 +248,12 @@ void UART_Mode_Enter(void)
     uart_set_tx_en(0u);
     uart_sync_from_handle();
     uart_refresh_gpio_state();
-    uart_print_help();
-    uart_print_labels();
+    if (CLI_IsDebugEnabled()) {
+        uart_print_help();
+        uart_print_labels();
+    }
 }
+
 
 uint8_t UART_Mode_HandleLine(char *line)
 {
