@@ -19,7 +19,7 @@ void MODES_Init(void);
 
 // Menü starten (nach "start")
 void MODES_StartMenu(void);
-
+void MODES_StartUartTunnel(uint8_t use_uart8);
 // GoTo Menü
 void MODES_GotoMenu(void);   // Ins Interface-Menü springen
 

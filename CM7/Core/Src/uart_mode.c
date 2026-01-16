@@ -31,6 +31,12 @@ static uint8_t g_uart_tunnel = 0;
 static uint8_t g_rs485_120r = 0;
 static uint8_t g_rs485_slr = 0;
 static uint32_t g_uart_baud = 115200u;
+typedef enum {
+    UART_HANDLE_AUTO = 0,
+    UART_HANDLE_UART4,
+    UART_HANDLE_UART8,
+} uart_handle_select_t;
+static uart_handle_select_t g_uart_handle_select = UART_HANDLE_AUTO;
 
 #define UART_TX_TIMEOUT_MS (100u)
 
@@ -105,8 +111,19 @@ static uint8_t uart_read_slr(void)
 #ifdef HAL_UART_MODULE_ENABLED
 static UART_HandleTypeDef *uart_get_handle(void)
 {
-    if (huart4.Instance != NULL) return &huart4;
-    if (huart8.Instance != NULL) return &huart8;
+	switch (g_uart_handle_select) {
+	        case UART_HANDLE_UART4:
+	            if (huart4.Instance != NULL) return &huart4;
+	            break;
+	        case UART_HANDLE_UART8:
+	            if (huart8.Instance != NULL) return &huart8;
+	            break;
+	        case UART_HANDLE_AUTO:
+	        default:
+	            if (huart4.Instance != NULL) return &huart4;
+	            if (huart8.Instance != NULL) return &huart8;
+	            break;
+	    }
     return NULL;
 }
 #endif
@@ -245,6 +262,7 @@ void UART_Mode_Enter(void)
 {
     g_uart_tunnel = 0;
     g_setup_state = UART_SETUP_NONE;
+    g_uart_handle_select = UART_HANDLE_AUTO;
     uart_set_tx_en(0u);
     uart_sync_from_handle();
     uart_refresh_gpio_state();
@@ -254,7 +272,31 @@ void UART_Mode_Enter(void)
     }
 }
 
+void UART_Mode_StartTunnel(uint8_t use_uart8)
+{
+#ifdef HAL_UART_MODULE_ENABLED
+    g_uart_handle_select = use_uart8 ? UART_HANDLE_UART8 : UART_HANDLE_AUTO;
+    UART_HandleTypeDef *huart = uart_get_handle();
+    if (huart == NULL) {
+        if (use_uart8) {
+            cli_printf("\r\nUART8 handle fehlt (huart8 nicht definiert).\r\n");
+        } else {
+            cli_printf("\r\nUART handle fehlt (huart4/huart8 nicht definiert).\r\n");
+        }
+        g_uart_tunnel = 0;
+        return;
+    }
+#else
+    (void)use_uart8;
+    cli_printf("\r\nUART HAL nicht aktiviert (HAL_UART_MODULE_ENABLED).\r\n");
+    g_uart_tunnel = 0;
+    return;
+#endif
 
+    g_uart_tunnel = 1;
+    uart_set_tx_en(0u);
+    cli_printf("\r\nUART tunnel aktiv (%s, ESC beendet)\r\n", use_uart8 ? "uart8" : "auto");
+}
 uint8_t UART_Mode_HandleLine(char *line)
 {
     while (*line == ' ' || *line == '\t') line++;
@@ -381,4 +423,3 @@ void UART_Mode_Poll(void)
     }
 #endif
 }
-

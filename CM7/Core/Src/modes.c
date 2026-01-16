@@ -77,6 +77,23 @@ void MODES_GotoMenu(void)
     CLI_PrintPrompt();
 }
 
+
+void MODES_StartUartTunnel(uint8_t use_uart8)
+{
+    if (g_mode != MODE_UART) {
+        if (g_mode != MODE_NONE) {
+            mode_print_exit(g_mode);
+        }
+        g_mode = MODE_UART;
+        CLI_SetPrompt("UART> ");
+        mode_print_entry(g_mode);
+        UART_Mode_Enter();
+    }
+
+    UART_Mode_StartTunnel(use_uart8);
+}
+
+
 // in MENU: ein einzelner Buchstabe wechselt sofort
 uint8_t MODES_HandleMenuChar(char ch)
 {

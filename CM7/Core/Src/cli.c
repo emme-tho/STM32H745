@@ -220,6 +220,7 @@ static void CLI_PrintHelp(void)
     cli_printf_debug("  info\r\n");
     cli_printf_debug("  clear | cls\r\n");
     cli_printf_debug("  start                - Mode-Menue starten\r\n");
+    cli_printf_debug("  tunnel uart8          - UART8 Tunnel (ESC beendet)\r\n");
     cli_printf_debug("  debug on|off\r\n");
     cli_printf_debug("\r\nPMIC:\r\n");
     cli_printf_debug("  pmic ping\r\n");
@@ -282,6 +283,20 @@ static uint8_t CLI_HandleLine_TopLevel(char *line)
     }
     if (strcmp(cmd, "start") == 0) {
         MODES_StartMenu();
+        return 1;
+    }
+
+    if (strcmp(cmd, "tunnel") == 0) {
+        char *which = strtok(NULL, " \t");
+        if (!which) {
+            cli_printf("Usage: tunnel uart8\r\n");
+            return 1;
+        }
+        if (strcmp(which, "uart8") == 0) {
+            MODES_StartUartTunnel(1u);
+            return 1;
+        }
+        cli_printf("Usage: tunnel uart8\r\n");
         return 1;
     }
 
