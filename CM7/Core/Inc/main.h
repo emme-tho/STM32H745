@@ -81,8 +81,14 @@ void Error_Handler(void);
 #define Digital_OUT_2_GPIO_Port GPIOE
 #define RS485_SLR_Control_Pin GPIO_PIN_8
 #define RS485_SLR_Control_GPIO_Port GPIOC
+#define CAN_OPT2_DIS_Pin GPIO_PIN_7
+#define CAN_OPT2_DIS_GPIO_Port GPIOG
 #define DO_V_A0_Pin GPIO_PIN_1
 #define DO_V_A0_GPIO_Port GPIOF
+#define CAN_120R_DIS_Pin GPIO_PIN_6
+#define CAN_120R_DIS_GPIO_Port GPIOG
+#define CAN_V_A0_Pin GPIO_PIN_2
+#define CAN_V_A0_GPIO_Port GPIOG
 #define DO_BUF_EN_N_Pin GPIO_PIN_4
 #define DO_BUF_EN_N_GPIO_Port GPIOF
 #define DI_V_A0_Pin GPIO_PIN_8
