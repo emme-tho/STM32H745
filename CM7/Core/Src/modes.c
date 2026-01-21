@@ -6,6 +6,7 @@
 #include "dio_mode.h"   // DIOs
 #include "spi_mode.h"   // SPI Master
 #include "uart_mode.h"   // UART
+#include "can_mode.h"  // CAN
 static ubt_mode_t g_mode = MODE_NONE;
 
 ubt_mode_t MODES_GetMode(void) { return g_mode; }
@@ -133,7 +134,7 @@ uint8_t MODES_HandleMenuChar(char ch)
             g_mode = MODE_CAN;
             CLI_SetPrompt("CAN> ");
             mode_print_entry(g_mode);
-            cli_printf("\r\nCAN Mode folgt.\r\n");
+            CAN_Mode_Enter();
             CLI_PrintPrompt();
             return 1;
 
@@ -197,6 +198,7 @@ uint8_t MODES_HandleLine(char *line)
         case MODE_DIO:   return DIO_Mode_HandleLine(line);
         case MODE_SPI:   return SPI_Mode_HandleLine(line);
         case MODE_UART:  return UART_Mode_HandleLine(line);
+        case MODE_CAN:   return CAN_Mode_HandleLine(line);
 
         default:        return 0;
     }
@@ -214,6 +216,8 @@ uint8_t MODES_HandleChar(char ch)
             return SPI_Mode_HandleChar(ch);
         case MODE_UART:
             return UART_Mode_HandleChar(ch);
+        case MODE_CAN:
+            return CAN_Mode_HandleChar(ch);
         default:
             return 0;
     }
@@ -234,6 +238,9 @@ void MODES_Poll(void)
     if (g_mode == MODE_UART) {
         UART_Mode_Poll();
     }
+    if (g_mode == MODE_CAN) {
+            CAN_Mode_Poll();
+        }
 }
 
 

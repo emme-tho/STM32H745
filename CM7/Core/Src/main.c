@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fdcan.h"
 #include "i2c.h"
 #include "spi.h"
 #include "usart.h"
@@ -132,6 +133,7 @@ Error_Handler();
   MX_I2C1_Init();
   MX_SPI2_Init();
   MX_UART4_Init();
+  MX_FDCAN1_Init();
   /* USER CODE BEGIN 2 */
   //uint8_t msg[] = "Hello World from UART8!\r\n";
 
@@ -195,7 +197,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLM = 1;
   RCC_OscInitStruct.PLL.PLLN = 37;
   RCC_OscInitStruct.PLL.PLLP = 2;
-  RCC_OscInitStruct.PLL.PLLQ = 2;
+  RCC_OscInitStruct.PLL.PLLQ = 3;
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLL1VCIRANGE_2;
   RCC_OscInitStruct.PLL.PLLVCOSEL = RCC_PLL1VCOMEDIUM;
