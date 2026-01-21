@@ -216,8 +216,8 @@ static void can_apply_baud(uint16_t prescaler)
     (void)HAL_FDCAN_ConfigFilter(&hfdcan1, &filter);
 
     (void)HAL_FDCAN_ConfigGlobalFilter(&hfdcan1,
-                                       FDCAN_ACCEPT_IN_RXFIFO0,
-                                       FDCAN_ACCEPT_IN_RXFIFO0,
+                                       FDCAN_ACCEPT_IN_RX_FIFO0,
+                                       FDCAN_ACCEPT_IN_RX_FIFO0,
                                        FDCAN_FILTER_REMOTE,
                                        FDCAN_FILTER_REMOTE);
 
