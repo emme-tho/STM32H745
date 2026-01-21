@@ -199,6 +199,21 @@ static void can_apply_baud(uint16_t prescaler)
     hfdcan1.Init.DataSyncJumpWidth = 1;
     hfdcan1.Init.DataTimeSeg1 = 1;
     hfdcan1.Init.DataTimeSeg2 = 1;
+    hfdcan1.Init.MessageRAMOffset = 0;
+    hfdcan1.Init.StdFiltersNbr = 1;
+    hfdcan1.Init.ExtFiltersNbr = 0;
+    hfdcan1.Init.RxFifo0ElmtsNbr = 8;
+    hfdcan1.Init.RxFifo0ElmtSize = FDCAN_DATA_BYTES_8;
+    hfdcan1.Init.RxFifo1ElmtsNbr = 0;
+    hfdcan1.Init.RxFifo1ElmtSize = FDCAN_DATA_BYTES_8;
+    hfdcan1.Init.RxBuffersNbr = 0;
+    hfdcan1.Init.RxBufferSize = FDCAN_DATA_BYTES_8;
+    hfdcan1.Init.TxEventsNbr = 0;
+    hfdcan1.Init.TxBuffersNbr = 0;
+    hfdcan1.Init.TxFifoQueueElmtsNbr = 8;
+    hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
+    hfdcan1.Init.TxElmtSize = FDCAN_DATA_BYTES_8;
+
 
     (void)HAL_FDCAN_DeInit(&hfdcan1);
     if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) {
@@ -421,6 +436,10 @@ static void can_send_frame(const char *line)
         cli_printf("\r\nCAN send: DATA zu lang (max 16 Bytes)\r\n");
         return;
     }
+    if (payload_len > 8u) {
+        cli_printf("\r\nCAN send: DATA zu lang fuer Classic CAN (max 8 Bytes)\r\n");
+        return;
+    }
 
     FDCAN_TxHeaderTypeDef tx = {0};
     if (can_id <= 0x7FFu) {
@@ -442,7 +461,8 @@ static void can_send_frame(const char *line)
         cli_printf("\r\nCAN TX OK (ID=0x%lX, DLC=%u)\r\n",
                    (unsigned long)tx.Identifier, (unsigned)payload_len);
     } else {
-        cli_printf("\r\nCAN TX FEHLER\r\n");
+        uint32_t err = HAL_FDCAN_GetError(&hfdcan1);
+        cli_printf("\r\nCAN TX FEHLER (err=0x%08lX)\r\n", (unsigned long)err);
     }
 }
 
