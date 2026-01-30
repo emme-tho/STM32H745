@@ -13,6 +13,7 @@
 #include "stm32h7xx_hal.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 // ============================================================
 // CAN MODE (FDCAN1)
@@ -609,19 +610,42 @@ void CAN_Mode_Poll(void)
 
         uint8_t len = can_dlc_to_len(rx.DataLength);
         uint32_t id = rx.Identifier;
-
-        cli_printf("%08lX#-%2u-#",
-                   (unsigned long)id,
-                   (unsigned)len);
+        char line[128];
+        size_t used = 0u;
+        int wrote = snprintf(line + used, sizeof(line) - used, "%08lX#-%2u-#",
+                             (unsigned long)id,
+                             (unsigned)len);
+        if (wrote > 0) {
+            used += (size_t)wrote;
+            if (used >= sizeof(line)) {
+                used = sizeof(line) - 1u;
+            }
+        }
 
         for (uint8_t i = 0; i < 16u; i++) {
             if (i < len) {
-                cli_printf("%02X ", data[i]);
+                wrote = snprintf(line + used, sizeof(line) - used, "%02X ", data[i]);
             } else {
-                cli_printf("   ");
+                wrote = snprintf(line + used, sizeof(line) - used, "   ");
+            }
+            if (wrote > 0) {
+                used += (size_t)wrote;
+                if (used >= sizeof(line)) {
+                    used = sizeof(line) - 1u;
+                    break;
+                }
             }
         }
-        cli_printf("\r\n");
+
+        if (used < sizeof(line) - 2u) {
+            line[used++] = '\r';
+            line[used++] = '\n';
+            line[used] = '\0';
+        } else {
+            line[sizeof(line) - 1u] = '\0';
+        }
+
+        cli_printf("%s", line);
     }
 }
 
