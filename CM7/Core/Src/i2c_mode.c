@@ -129,6 +129,61 @@ static void print_bytes(const uint8_t *b, uint16_t n)
     }
 }
 
+static void i2c_dump_print_line(uint8_t offset, const uint8_t *data, uint8_t ok)
+{
+    cli_printf("%02X: ", offset);
+    for (uint8_t i = 0; i < 16u; i++) {
+        if (ok) cli_printf("%02X ", data[i]);
+        else cli_printf("?? ");
+    }
+    cli_printf("|");
+    for (uint8_t i = 0; i < 16u; i++) {
+        char ch = '.';
+        if (ok) {
+            uint8_t v = data[i];
+            if (v >= 0x20u && v <= 0x7Eu) {
+                ch = (char)v;
+            }
+        }
+        cli_printf("%c", ch);
+    }
+    cli_printf("|\r\n");
+}
+
+static void i2c_dump_device(uint8_t addr7)
+{
+    uint8_t row[16];
+
+    cli_printf("\r\nI2C dump addr7=0x%02X (bus=0x%02X)\r\n", addr7, (uint8_t)(addr7 << 1));
+    cli_printf("     00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  |ASCII|\r\n");
+
+    for (uint16_t offset = 0; offset < 0x100u; offset += 16u) {
+        if (HAL_I2C_GetState(&hi2c1) != HAL_I2C_STATE_READY) {
+            (void)HAL_I2C_DeInit(&hi2c1);
+            (void)HAL_I2C_Init(&hi2c1);
+        }
+
+        HAL_StatusTypeDef st = HAL_I2C_Mem_Read(
+                &hi2c1,
+                (uint16_t)(addr7 << 1),
+                offset,
+                I2C_MEMADD_SIZE_8BIT,
+                row,
+                (uint16_t)sizeof(row),
+                I2C_TX_TIMEOUT_MS
+        );
+
+        i2c_dump_print_line((uint8_t)offset, row, (st == HAL_OK));
+
+        // ErrorCode löschen, damit der nächste Versuch sauber ist
+        hi2c1.ErrorCode = HAL_I2C_ERROR_NONE;
+    }
+
+    cli_printf("\r\n");
+}
+
+
+
 // Finalisiert aktuelle Segment-Nibbles -> Bytes
 // - odd nibble: fuehrende 0
 // - erstes Byte (wenn noch keine Adresse): wird Adresse (7-bit enforced)
@@ -389,6 +444,7 @@ static void i2c_print_help(void)
     cli_printf("I2C Mode Befehle:\r\n");
     cli_printf("  v <mv>      - LDO1 Spannung setzen (500..3300mV) und enable\r\n");
     cli_printf("  s           - I2C scan (i2cdetect-style)\r\n");
+    cli_printf("  dump <addr> - Dump 0x00..0xFF (Byteformat + ASCII)\r\n");
     cli_printf("  w..z..p     - Write Stream: w(ADDR7)(DATA..)(zDATA..)*p\r\n");
     cli_printf("  w..r..p     - Read Stream : w(ADDR7)(REG..)(rLEN|rb|rw|rh)p\r\n");
     cli_printf("               Beispiel: w3c57r01p (read 1 byte ab reg 0x57)\r\n");
@@ -429,7 +485,21 @@ uint8_t I2C_Mode_HandleLine(char *line)
         I2C_PrintDetectTable();
         return 1;
     }
+    if (strcmp(cmd, "dump") == 0) {
+        char *addr_s = strtok(NULL, " \t");
+        if (!addr_s) {
+            cli_printf("Usage: dump <addr7>\r\n");
+            return 1;
+        }
 
+        uint32_t addr = strtoul(addr_s, NULL, 0);
+        if (addr > 0x7Fu) {
+            cli_printf("dump: FEHLER (addr 0x00..0x7F)\r\n");
+            return 1;
+        }
+        i2c_dump_device((uint8_t)addr);
+        return 1;
+    }
     if (strcmp(cmd, "v") == 0 || strcmp(cmd, "voltage") == 0)
     {
         cli_printf("Hinweis: v <mv> ist deprecated, nutze Setup (s).\r\n");
