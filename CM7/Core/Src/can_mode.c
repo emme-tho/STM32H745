@@ -20,8 +20,8 @@
 // Setup (s):
 //   - LDO3 Voltage/Enable
 //   - Baudrate (125/250/500 kbit, prescaler 8/4/2)
-//   - 120R termination (PG6, high = disabled)
-//   - Optical interface disable (PG7, high = disabled)
+//   - 120R termination (PG6, high = enabled)
+//   - Optical interface disable (PG7, high = enabled)
 //
 // Listen (l):
 //   - start/stop listen output in terminal
@@ -80,7 +80,7 @@ static void can_set_120r(uint8_t enable)
 {
 #if defined(CAN_120R_DIS_GPIO_Port) && defined(CAN_120R_DIS_Pin)
     HAL_GPIO_WritePin(CAN_120R_DIS_GPIO_Port, CAN_120R_DIS_Pin,
-                      enable ? GPIO_PIN_RESET : GPIO_PIN_SET);
+                      enable ? GPIO_PIN_SET : GPIO_PIN_RESET);
     g_can_120r_enabled = enable ? 1u : 0u;
 #else
     (void)enable;
@@ -91,7 +91,7 @@ static void can_set_opt_disable(uint8_t disable)
 {
 #if defined(CAN_OPT2_DIS_GPIO_Port) && defined(CAN_OPT2_DIS_Pin)
     HAL_GPIO_WritePin(CAN_OPT2_DIS_GPIO_Port, CAN_OPT2_DIS_Pin,
-                      disable ? GPIO_PIN_SET : GPIO_PIN_RESET);
+                      disable ? GPIO_PIN_RESET : GPIO_PIN_SET);
     g_can_opt_disabled = disable ? 1u : 0u;
 #else
     (void)disable;
@@ -101,7 +101,7 @@ static void can_set_opt_disable(uint8_t disable)
 static uint8_t can_read_120r(void)
 {
 #if defined(CAN_120R_DIS_GPIO_Port) && defined(CAN_120R_DIS_Pin)
-    return (HAL_GPIO_ReadPin(CAN_120R_DIS_GPIO_Port, CAN_120R_DIS_Pin) == GPIO_PIN_RESET) ? 1u : 0u;
+    return (HAL_GPIO_ReadPin(CAN_120R_DIS_GPIO_Port, CAN_120R_DIS_Pin) == GPIO_PIN_SET) ? 1u : 0u;
 #else
     return 0u;
 #endif
@@ -110,7 +110,7 @@ static uint8_t can_read_120r(void)
 static uint8_t can_read_opt_disable(void)
 {
 #if defined(CAN_OPT2_DIS_GPIO_Port) && defined(CAN_OPT2_DIS_Pin)
-    return (HAL_GPIO_ReadPin(CAN_OPT2_DIS_GPIO_Port, CAN_OPT2_DIS_Pin) == GPIO_PIN_SET) ? 1u : 0u;
+	return (HAL_GPIO_ReadPin(CAN_OPT2_DIS_GPIO_Port, CAN_OPT2_DIS_Pin) == GPIO_PIN_RESET) ? 1u : 0u;
 #else
     return 0u;
 #endif
