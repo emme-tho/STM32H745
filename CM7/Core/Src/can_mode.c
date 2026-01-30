@@ -236,6 +236,8 @@ static void can_apply_baud(uint16_t prescaler)
                                        FDCAN_FILTER_REMOTE,
                                        FDCAN_FILTER_REMOTE);
 
+    (void)HAL_FDCAN_ConfigRxFifoOverwrite(&hfdcan1, FDCAN_RX_FIFO0, FDCAN_RX_FIFO_OVERWRITE);
+
     if (HAL_FDCAN_Start(&hfdcan1) == HAL_OK) {
         cli_printf("\r\nFDCAN1 re-init OK (%u kbit, prescaler %u)\r\n",
                    (unsigned)g_can_baud_kbps, (unsigned)g_can_prescaler);
@@ -587,12 +589,23 @@ void CAN_Mode_Poll(void)
 {
     if (!g_can_listen) return;
 
+    uint8_t retry_guard = 0u;
+
     while (HAL_FDCAN_GetRxFifoFillLevel(&hfdcan1, FDCAN_RX_FIFO0) > 0u) {
         FDCAN_RxHeaderTypeDef rx = {0};
         uint8_t data[64] = {0};
         if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, &rx, data) != HAL_OK) {
-            break;
+            uint32_t err = HAL_FDCAN_GetError(&hfdcan1);
+            if ((err & HAL_FDCAN_ERROR_FIFO_EMPTY) != 0u) {
+                break;
+            }
+            retry_guard++;
+            if (retry_guard > 2u) {
+                break;
+            }
+            continue;
         }
+        retry_guard = 0u;
 
         uint8_t len = can_dlc_to_len(rx.DataLength);
         uint32_t id = rx.Identifier;
