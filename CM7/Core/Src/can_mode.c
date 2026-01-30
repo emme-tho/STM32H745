@@ -50,6 +50,11 @@ static uint8_t g_can_120r_enabled = 0;
 static uint8_t g_can_opt_disabled = 0;
 
 static const char *voltage_can = "ldo3";
+#define CAN_WS_MAX 96u
+
+static uint8_t g_can_ws_active = 0;
+static char g_can_ws_buf[CAN_WS_MAX];
+static size_t g_can_ws_len = 0u;
 
 static int can_hex_nibble(char c)
 {
@@ -353,7 +358,7 @@ static void can_print_help(void)
     cli_printf("CAN Mode Befehle:\r\n");
     cli_printf("  s           - Setup\r\n");
     cli_printf("  l           - Listen start/stop\r\n");
-    cli_printf("  w<ID>#DATA  - Send (HEX), z.B. w123#1122\r\n");
+    cli_printf("  w<ID>#DATAp - Send (HEX), z.B. w123#1122p\r\n");
     cli_printf("  ?           - diese Hilfe\r\n");
 }
 
@@ -406,13 +411,20 @@ static uint8_t can_parse_hex_bytes(const char *hex, uint8_t *out, uint8_t max_le
     return 1;
 }
 
+static void can_ws_reset(void)
+{
+    g_can_ws_active = 0u;
+    g_can_ws_len = 0u;
+    g_can_ws_buf[0] = '\0';
+}
+
 static void can_send_frame(const char *line)
 {
     if (!line || line[0] == '\0') return;
 
     const char *hash = strchr(line, '#');
     if (!hash) {
-        cli_printf("\r\nCAN send: Format w<ID>#DATA\r\n");
+        cli_printf("\r\nCAN send: Format w<ID>#DATAp\r\n");
         return;
     }
 
@@ -460,10 +472,32 @@ static void can_send_frame(const char *line)
     tx.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
     tx.MessageMarker = 0;
 
+    if (hfdcan1.Init.TxFifoQueueElmtsNbr == 0u) {
+           cli_printf("\r\nCAN TX FEHLER (fifo not configured)\r\n");
+           return;
+       }
+
+       uint32_t free_level = HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1);
+       if (free_level < hfdcan1.Init.TxFifoQueueElmtsNbr) {
+           cli_printf("\r\nCAN TX busy (fifo=%lu/%lu)\r\n",
+                      (unsigned long)free_level,
+                      (unsigned long)hfdcan1.Init.TxFifoQueueElmtsNbr);
+           return;
+       }
+
+
     if (HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &tx, payload) == HAL_OK) {
         cli_printf("\r\nCAN TX OK (ID=0x%lX, DLC=%u)\r\n",
                    (unsigned long)tx.Identifier, (unsigned)payload_len);
-    } else {
+        uint32_t start = HAL_GetTick();
+        while (HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1) < hfdcan1.Init.TxFifoQueueElmtsNbr) {
+            if ((HAL_GetTick() - start) > 10u) {
+                cli_printf("CAN TX WARN: fifo not empty after send\r\n");
+                break;
+            }
+        }
+    }
+    else {
         uint32_t err = HAL_FDCAN_GetError(&hfdcan1);
         cli_printf("\r\nCAN TX FEHLER (err=0x%08lX)\r\n", (unsigned long)err);
     }
@@ -473,6 +507,7 @@ void CAN_Mode_Enter(void)
 {
     g_setup_state = CAN_SETUP_NONE;
     g_can_listen = 0;
+    can_ws_reset();
 
     if (hfdcan1.Init.NominalPrescaler != 0u) {
         g_can_prescaler = (uint16_t)hfdcan1.Init.NominalPrescaler;
@@ -511,8 +546,8 @@ uint8_t CAN_Mode_HandleLine(char *line)
         return 1;
     }
 
-    if ((line[0] == 'w' || line[0] == 'W') && strlen(line) > 1u) {
-        can_send_frame(line + 1u);
+    if (line[0] == 'w' || line[0] == 'W') {
+        cli_printf("\r\nCAN send: nutze w<ID>#DATAp\r\n");
         return 1;
     }
 
@@ -583,7 +618,49 @@ uint8_t CAN_Mode_HandleChar(char ch)
         return 1;
     }
 
-    return 0;
+    if (!g_can_ws_active) {
+        if (ch == 'w' || ch == 'W') {
+            g_can_ws_active = 1u;
+            g_can_ws_len = 0u;
+            g_can_ws_buf[0] = '\0';
+            cli_printf("\r\nsend: ");
+            return 1;
+        }
+        return 0;
+    }
+
+    if (ch == 'x' || ch == 'X') {
+        can_ws_reset();
+        cli_printf("\r\n(send aborted)\r\n");
+        return 0;
+    }
+
+    if (ch == 'p' || ch == 'P') {
+        g_can_ws_buf[g_can_ws_len] = '\0';
+        if (g_can_ws_len == 0u) {
+            cli_printf("\r\nsend: FEHLER (no data)\r\n");
+            can_ws_reset();
+            return 1;
+        }
+        can_send_frame(g_can_ws_buf);
+        can_ws_reset();
+        return 1;
+    }
+
+    if (ch == '\r' || ch == '\n') {
+        return 1;
+    }
+
+    if (g_can_ws_len < (CAN_WS_MAX - 1u)) {
+        g_can_ws_buf[g_can_ws_len++] = ch;
+        g_can_ws_buf[g_can_ws_len] = '\0';
+        cli_printf("%c", ch);
+        return 1;
+    }
+
+    cli_printf("\r\nsend: FEHLER (zu lang)\r\n");
+    can_ws_reset();
+    return 1;
 }
 
 void CAN_Mode_Poll(void)
