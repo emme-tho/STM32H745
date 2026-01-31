@@ -56,6 +56,8 @@ static uint8_t g_can_ws_active = 0;
 static char g_can_ws_buf[CAN_WS_MAX];
 static size_t g_can_ws_len = 0u;
 
+static volatile uint8_t g_can_rx_pending = 0u;
+
 static int can_hex_nibble(char c)
 {
     if (c >= '0' && c <= '9') return (c - '0');
@@ -194,7 +196,7 @@ static void can_apply_baud(uint16_t prescaler)
 
     hfdcan1.Init.FrameFormat = FDCAN_FRAME_CLASSIC;
     hfdcan1.Init.Mode = FDCAN_MODE_NORMAL;
-    hfdcan1.Init.AutoRetransmission = ENABLE;
+    hfdcan1.Init.AutoRetransmission = DISABLE;
     hfdcan1.Init.TransmitPause = DISABLE;
     hfdcan1.Init.ProtocolException = DISABLE;
     hfdcan1.Init.NominalPrescaler = prescaler;
@@ -242,9 +244,10 @@ static void can_apply_baud(uint16_t prescaler)
                                        FDCAN_FILTER_REMOTE,
                                        FDCAN_FILTER_REMOTE);
 
-    (void)HAL_FDCAN_ConfigRxFifoOverwrite(&hfdcan1, FDCAN_RX_FIFO0, FDCAN_RX_FIFO_OVERWRITE);
+    (void)HAL_FDCAN_ConfigRxFifoOverwrite(&hfdcan1, FDCAN_RX_FIFO0, FDCAN_RX_FIFO_BLOCKING);
 
     if (HAL_FDCAN_Start(&hfdcan1) == HAL_OK) {
+    	(void)HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0);
         cli_printf("\r\nFDCAN1 re-init OK (%u kbit, prescaler %u)\r\n",
                    (unsigned)g_can_baud_kbps, (unsigned)g_can_prescaler);
     } else {
@@ -375,6 +378,7 @@ static void can_list_toggle(void)
 {
     g_can_listen = g_can_listen ? 0u : 1u;
     if (g_can_listen) {
+    	g_can_rx_pending = 0u;
         can_print_list_header();
     } else {
         cli_printf("\r\n(CAN listen stopped)\r\n");
@@ -667,6 +671,12 @@ void CAN_Mode_Poll(void)
 {
     if (!g_can_listen) return;
 
+    if (!g_can_rx_pending &&
+        HAL_FDCAN_GetRxFifoFillLevel(&hfdcan1, FDCAN_RX_FIFO0) == 0u) {
+        return;
+    }
+
+
     uint8_t retry_guard = 0u;
 
     while (HAL_FDCAN_GetRxFifoFillLevel(&hfdcan1, FDCAN_RX_FIFO0) > 0u) {
@@ -699,7 +709,8 @@ void CAN_Mode_Poll(void)
             }
         }
 
-        for (uint8_t i = 0; i < 16u; i++) {
+        for (uint8_t i = 0; i < 16u; i++)
+        {
             if (i < len) {
                 wrote = snprintf(line + used, sizeof(line) - used, "%02X ", data[i]);
             } else {
@@ -714,15 +725,33 @@ void CAN_Mode_Poll(void)
             }
         }
 
-        if (used < sizeof(line) - 2u) {
+        if (used < sizeof(line) - 2u)
+        {
             line[used++] = '\r';
             line[used++] = '\n';
             line[used] = '\0';
-        } else {
+        }
+        else
+        {
             line[sizeof(line) - 1u] = '\0';
         }
 
         cli_printf("%s", line);
+    }
+
+    if (HAL_FDCAN_GetRxFifoFillLevel(&hfdcan1, FDCAN_RX_FIFO0) == 0u)
+    {
+        g_can_rx_pending = 0u;
+    }
+}
+
+void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
+{
+    if (hfdcan->Instance != FDCAN1) {
+        return;
+    }
+    if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != 0u) {
+        g_can_rx_pending = 1u;
     }
 }
 
